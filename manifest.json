@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "2.0.2",
+  "version": "2.1",
   "default_locale": "en",
   "description": "__MSG_extensionDescription__",
   "icons": {
@@ -20,6 +20,11 @@
   },
   "permissions": [
     "geolocation"
+  ],
+  "optional_permissions": [
+    "topSites",
+    "search",
+    "history"
   ],
   "action": {
     "default_popup": "./public/popup.html",

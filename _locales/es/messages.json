@@ -140,6 +140,24 @@
   "planet_mustafar_description": {
     "message": "Hogar de Darth Vader"
   },
+  "search_placeholder": {
+    "message": "Buscar o escribir una URL"
+  },
+  "popup_newtab_title": {
+    "message": "Elementos de nueva pestaña"
+  },
+  "popup_newtab_hint": {
+    "message": "Elige qué elementos aparecen en la nueva pestaña."
+  },
+  "popup_show_search_bar": {
+    "message": "Mostrar barra de búsqueda"
+  },
+  "popup_show_shortcuts": {
+    "message": "Mostrar atajos"
+  },
+  "popup_show_extras_hyperspace": {
+    "message": "Mostrar barra y atajos durante el hiperespacio"
+  },
   "popup_title": {
     "message": "Star Wars Weather"
   },
@@ -150,7 +168,7 @@
     "message": "Unidades de temperatura"
   },
   "popup_units_hint": {
-    "message": "Abre una pestaña nueva o recarga para aplicar el cambio de unidad."
+    "message": "Elige tu unidad de temperatura preferida."
   },
   "units_fahrenheit_label": {
     "message": "Fahrenheit"
@@ -162,7 +180,7 @@
     "message": "Idioma"
   },
   "popup_language_hint": {
-    "message": "Las traducciones pueden no ser perfectas. Actualiza la pestaña después de cambiar el idioma."
+    "message": "Las traducciones pueden no ser perfectas."
   },
   "language_english_label": {
     "message": "🇺🇸 Inglés"
@@ -177,7 +195,7 @@
     "message": "Ubicación manual"
   },
   "popup_manual_location_hint": {
-    "message": "Si el acceso a la ubicación está bloqueado, busca una ciudad (p. ej., \"París\" o \"París, ES\") y elige un resultado. Abre una pestaña nueva o actualiza para aplicar el cambio."
+    "message": "Si el acceso a la ubicación está bloqueado, busca una ciudad (p. ej., \"París\" o \"París, ES\") y elige un resultado."
   },
   "popup_manual_location_placeholder": {
     "message": "Ciudad o Ciudad, País"

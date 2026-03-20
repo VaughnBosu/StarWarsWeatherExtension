@@ -3,7 +3,10 @@ const STORAGE_KEYS = Object.freeze({
   language: 'language',
   unit: 'unit',
   geolocationAlerted: 'alerted',
-  manualLocation: 'manualLocation'
+  manualLocation: 'manualLocation',
+  showSearchBar: 'showSearchBar',
+  showShortcuts: 'showShortcuts',
+  showExtrasInHyperspace: 'showExtrasInHyperspace'
 });
 
 const LEGACY_CACHE_KEYS = Object.freeze([
@@ -14,7 +17,7 @@ const LEGACY_CACHE_KEYS = Object.freeze([
   'date'
 ]);
 
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+import { CACHE_TTL_MS } from './config.js';
 
 function isWithinTtl(timestamp) {
   if (!timestamp) {
@@ -209,6 +212,38 @@ export function setManualLocation(value) {
   };
 
   localStorage.setItem(STORAGE_KEYS.manualLocation, JSON.stringify(payload));
+}
+
+function getBooleanSetting(key) {
+  return localStorage.getItem(key) === 'true';
+}
+
+function setBooleanSetting(key, value) {
+  localStorage.setItem(key, value ? 'true' : 'false');
+}
+
+export function getShowSearchBar() {
+  return getBooleanSetting(STORAGE_KEYS.showSearchBar);
+}
+
+export function setShowSearchBar(value) {
+  setBooleanSetting(STORAGE_KEYS.showSearchBar, value);
+}
+
+export function getShowShortcuts() {
+  return getBooleanSetting(STORAGE_KEYS.showShortcuts);
+}
+
+export function setShowShortcuts(value) {
+  setBooleanSetting(STORAGE_KEYS.showShortcuts, value);
+}
+
+export function getShowExtrasInHyperspace() {
+  return getBooleanSetting(STORAGE_KEYS.showExtrasInHyperspace);
+}
+
+export function setShowExtrasInHyperspace(value) {
+  setBooleanSetting(STORAGE_KEYS.showExtrasInHyperspace, value);
 }
 
 export { STORAGE_KEYS };

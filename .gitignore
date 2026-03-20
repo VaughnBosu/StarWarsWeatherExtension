@@ -1,3 +1,6 @@
 .DS_STORE
 env.js
 .vscode
+agents.md
+node_modules/
+# bun.lock should be committed to version control

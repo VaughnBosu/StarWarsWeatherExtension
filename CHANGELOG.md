@@ -88,3 +88,13 @@
 # v2.0.2
 - updated Scarif summary localization strings to avoid mismatched time-of-day phrases
 - made the hyperspace loading scene responsive and full-screen on ultrawide displays
+
+# v2.1
+- added search bar and top-sites shortcuts to the new tab page
+- added popup/options toggles for new tab elements and hyperspace visibility
+- settings now apply instantly without needing to refresh
+- extracted shared constants and eliminated code duplication across modules
+- refactored core modules to be testable with full test suite (136 tests)
+- switched from npm to Bun
+- updated localization strings (EN + ES), minor typo and FAQ fixes
+- added github actions workflow for pushing to chrome web store using [cws-cli](https://github.com/null3000/cws-cli)

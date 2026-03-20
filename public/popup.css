@@ -140,6 +140,40 @@ body {
     font-weight: 600;
 }
 
+.checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.checkbox-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.checkbox-option:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.checkbox-option input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 18px;
+    height: 18px;
+}
+
+.checkbox-option span {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
 .hint {
     margin: 0;
     font-size: 12px;

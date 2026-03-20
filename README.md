@@ -30,6 +30,34 @@ Each planet has specific reasons for when it will be used here they are:
 ## Privacy
 Privacy is incredibly important, that's why this project is open source. This extension is ran on the machine which installed it. This extension does NOT store any location data. Any stored data is on the users machine and not accessible anywhere else.
 
+## Development
+
+### Prerequisites
+- [Bun](https://bun.sh/) - Fast JavaScript runtime & package manager
+
+### Installation
+```bash
+bun install  # Install dependencies
+```
+
+### Running the Extension
+No build step required - load the unpacked extension directly:
+- **Chrome**: `chrome://extensions` → "Load unpacked" → select project root
+- **Firefox**: `about:debugging` → "Load Temporary Add-on" → select manifest.json
+
+### Testing
+```bash
+bun test  # Run tests with Bun's built-in test runner
+```
+
+### Scripts
+- `bun install` - Install dependencies
+- `bun test` - Run tests
+- `bun run dev` - Run with watch mode for development
+
+### CI/CD
+Pushes to `main` automatically upload and publish the extension to the Chrome Web Store via a GitHub Actions workflow using [cws-cli](https://github.com/null3000/cws-cli).
+
 ## Contributing
 Like the project? Please consider contributing to this project, lots of improvements and optimizations can be made.
 

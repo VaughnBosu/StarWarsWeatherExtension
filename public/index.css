@@ -3,7 +3,12 @@
     font-family: "Open Sans", sans-serif;
     color: #fff;
     margin: 0;
-    padding: 0; 
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+    overflow: hidden;
 }
 
 p{
@@ -195,13 +200,19 @@ p{
     opacity: 0.8;
 }
 
-.center {
+.center-group {
     position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
+    align-items: center;
+}
+
+.center {
+    display: flex;
+    flex-direction: column;
 }
 
 .center1 {
@@ -282,6 +293,202 @@ a:hover {
 /* if link visted, make purple */
 a:visited {
     color: darkmagenta;
+}
+
+/* New tab extras (search bar + shortcuts below weather) */
+.newtab-extras {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    z-index: 2;
+    width: 90vw;
+    max-width: 600px;
+    margin-top: 28px;
+}
+
+.newtab-extras.hidden,
+.newtab-extras.hyperspace-hidden {
+    display: none;
+}
+
+/* Search bar */
+.search-form {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+}
+
+.search-form.hidden {
+    display: none;
+}
+
+.search-input {
+    width: 100%;
+    height: 46px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 24px;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #fff;
+    font-size: 16px;
+    font-family: "Open Sans", sans-serif;
+    outline: none;
+    box-sizing: border-box;
+    transition: background 0.2s ease;
+}
+
+.search-input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.search-input:focus {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* Search suggestions dropdown */
+.search-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin: 4px 0 0 0;
+    padding: 6px 0;
+    list-style: none;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 16px;
+    z-index: 10;
+    max-height: 300px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.search-suggestions.hidden {
+    display: none;
+}
+
+.search-suggestion-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    color: #fff;
+}
+
+.search-suggestion-item:hover,
+.search-suggestion-item.active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.suggestion-favicon {
+    flex-shrink: 0;
+    border-radius: 2px;
+}
+
+.suggestion-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.suggestion-title {
+    font-size: 14px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: none;
+}
+
+.suggestion-url {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: none;
+}
+
+/* Shortcuts grid */
+.shortcuts-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+    max-width: 600px;
+}
+
+.shortcuts-grid.hidden {
+    display: none;
+}
+
+.shortcut-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 64px;
+    text-decoration: none;
+    color: #fff;
+    transition: transform 0.15s ease;
+}
+
+.shortcut-tile:hover {
+    transform: scale(1.08);
+    color: #fff;
+}
+
+.shortcut-tile:visited {
+    color: #fff;
+}
+
+.shortcut-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 6px;
+    overflow: hidden;
+}
+
+.shortcut-icon img {
+    width: 24px;
+    height: 24px;
+}
+
+.shortcut-initial {
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: none;
+}
+
+.shortcut-label {
+    font-size: 11px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 64px;
+    opacity: 0.85;
+}
+
+/* Responsive: hide shortcuts on short viewports */
+@media (max-height: 600px) {
+    .shortcuts-grid {
+        display: none;
+    }
 }
 
 /* legacy footer styles removed */

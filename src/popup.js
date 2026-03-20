@@ -3,20 +3,33 @@ import {
   getManualLocation,
   getPreferredLanguage,
   getPreferredUnit,
+  getShowExtrasInHyperspace,
+  getShowSearchBar,
+  getShowShortcuts,
   setManualLocation,
   setPreferredLanguage,
-  setPreferredUnit
+  setPreferredUnit,
+  setShowExtrasInHyperspace,
+  setShowSearchBar,
+  setShowShortcuts
 } from './storage.js';
 import { loadLocalization, invalidateLocalizationCache } from './i18n.js';
+import { stateToAbbreviation } from './geo.js';
+import { GEOCODING_DIRECT_ENDPOINT, GEOCODING_RESULT_LIMIT } from './config.js';
 
 let currentLocalization = null;
 let manualLocationStatus = null;
 
-document.addEventListener('DOMContentLoaded', initialize);
+const SHOULD_INIT = !(typeof globalThis !== 'undefined' && globalThis.__SWW_SKIP_INIT__ === true);
+
+if (SHOULD_INIT && typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', initialize);
+}
 
 async function initialize() {
   attachUnitHandlers();
   attachLanguageHandlers();
+  attachNewtabHandlers();
   attachManualLocationHandlers();
   await refreshLocalization(getPreferredLanguage());
 }
@@ -81,6 +94,66 @@ function synchroniseControls() {
       englishRadio.checked = true;
       spanishRadio.checked = false;
     }
+  }
+
+  const showSearch = getShowSearchBar();
+  const showShortcutsVal = getShowShortcuts();
+
+  const searchBarCheckbox = document.getElementById('showSearchBar');
+  const shortcutsCheckbox = document.getElementById('showShortcuts');
+
+  if (searchBarCheckbox) {
+    searchBarCheckbox.checked = showSearch;
+  }
+  if (shortcutsCheckbox) {
+    shortcutsCheckbox.checked = showShortcutsVal;
+  }
+
+  syncHyperspaceCheckboxUi(showSearch || showShortcutsVal);
+}
+
+function syncHyperspaceCheckboxUi(eitherVisible) {
+  const extrasInHyperspaceCheckbox = document.getElementById('showExtrasInHyperspace');
+  if (!extrasInHyperspaceCheckbox) return;
+  extrasInHyperspaceCheckbox.disabled = !eitherVisible;
+  extrasInHyperspaceCheckbox.closest('label').style.display = eitherVisible ? '' : 'none';
+  if (!eitherVisible) {
+    extrasInHyperspaceCheckbox.checked = false;
+    setShowExtrasInHyperspace(false);
+  } else {
+    extrasInHyperspaceCheckbox.checked = getShowExtrasInHyperspace();
+  }
+}
+
+function attachNewtabHandlers() {
+  const searchBarCheckbox = document.getElementById('showSearchBar');
+  const shortcutsCheckbox = document.getElementById('showShortcuts');
+  const extrasInHyperspaceCheckbox = document.getElementById('showExtrasInHyperspace');
+
+  if (searchBarCheckbox) {
+    searchBarCheckbox.addEventListener('change', (event) => {
+      setShowSearchBar(event.target.checked);
+      syncHyperspaceCheckboxUi(getShowSearchBar() || getShowShortcuts());
+      if (event.target.checked && typeof chrome !== 'undefined' && chrome.permissions) {
+        chrome.permissions.request({ permissions: ['search', 'history'] }).catch(() => {});
+      }
+    });
+  }
+
+  if (shortcutsCheckbox) {
+    shortcutsCheckbox.addEventListener('change', (event) => {
+      setShowShortcuts(event.target.checked);
+      syncHyperspaceCheckboxUi(getShowSearchBar() || getShowShortcuts());
+      if (event.target.checked && typeof chrome !== 'undefined' && chrome.permissions) {
+        chrome.permissions.request({ permissions: ['topSites'] }).catch(() => {});
+      }
+    });
+  }
+
+  if (extrasInHyperspaceCheckbox) {
+    extrasInHyperspaceCheckbox.addEventListener('change', (event) => {
+      setShowExtrasInHyperspace(event.target.checked);
+    });
   }
 }
 
@@ -162,9 +235,9 @@ async function fetchManualLocationSuggestions(query) {
     throw new Error('API key is not available');
   }
 
-  const url = new URL('https://api.openweathermap.org/geo/1.0/direct');
+  const url = new URL(GEOCODING_DIRECT_ENDPOINT);
   url.searchParams.set('q', query);
-  url.searchParams.set('limit', '5');
+  url.searchParams.set('limit', String(GEOCODING_RESULT_LIMIT));
   url.searchParams.set('appid', API_KEY);
 
   const response = await fetch(url.toString());
@@ -347,67 +420,24 @@ function formatManualLocationDisplay(result) {
   return parts.join(', ');
 }
 
-function stateToAbbreviation(stateName) {
-  const normalized = stateName.toLowerCase();
-  const entries = Object.entries(US_STATE_MAP);
-  for (const [abbr, fullName] of entries) {
-    if (normalized === fullName.toLowerCase() || normalized === abbr.toLowerCase()) {
-      return abbr;
-    }
-  }
-  return stateName;
-}
-
-const US_STATE_MAP = {
-  AL: 'Alabama',
-  AK: 'Alaska',
-  AZ: 'Arizona',
-  AR: 'Arkansas',
-  CA: 'California',
-  CO: 'Colorado',
-  CT: 'Connecticut',
-  DE: 'Delaware',
-  DC: 'District of Columbia',
-  FL: 'Florida',
-  GA: 'Georgia',
-  HI: 'Hawaii',
-  ID: 'Idaho',
-  IL: 'Illinois',
-  IN: 'Indiana',
-  IA: 'Iowa',
-  KS: 'Kansas',
-  KY: 'Kentucky',
-  LA: 'Louisiana',
-  ME: 'Maine',
-  MD: 'Maryland',
-  MA: 'Massachusetts',
-  MI: 'Michigan',
-  MN: 'Minnesota',
-  MS: 'Mississippi',
-  MO: 'Missouri',
-  MT: 'Montana',
-  NE: 'Nebraska',
-  NV: 'Nevada',
-  NH: 'New Hampshire',
-  NJ: 'New Jersey',
-  NM: 'New Mexico',
-  NY: 'New York',
-  NC: 'North Carolina',
-  ND: 'North Dakota',
-  OH: 'Ohio',
-  OK: 'Oklahoma',
-  OR: 'Oregon',
-  PA: 'Pennsylvania',
-  RI: 'Rhode Island',
-  SC: 'South Carolina',
-  SD: 'South Dakota',
-  TN: 'Tennessee',
-  TX: 'Texas',
-  UT: 'Utah',
-  VT: 'Vermont',
-  VA: 'Virginia',
-  WA: 'Washington',
-  WV: 'West Virginia',
-  WI: 'Wisconsin',
-  WY: 'Wyoming'
+export {
+  applyTranslations,
+  attachLanguageHandlers,
+  attachManualLocationHandlers,
+  attachNewtabHandlers,
+  attachUnitHandlers,
+  fetchManualLocationSuggestions,
+  formatManualLocationDisplay,
+  getManualLocationResultsContainer,
+  getManualLocationStatusText,
+  handleManualLocationClear,
+  handleManualLocationSearch,
+  initialize,
+  populateManualLocationInput,
+  refreshLocalization,
+  renderManualLocationMessage,
+  renderManualLocationOptions,
+  stateToAbbreviation,
+  syncHyperspaceCheckboxUi,
+  synchroniseControls
 };

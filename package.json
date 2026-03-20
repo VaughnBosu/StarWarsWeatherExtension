@@ -4,7 +4,10 @@
   "description": "Open a new tab page display a star wars background based on the weather! This extension is for Firefox and Chrome",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "bun test",
+    "dev": "bun run --watch src/app.js",
+    "lint": "bun run lint:check",
+    "format": "bun run format:check"
   },
   "repository": {
     "type": "git",
@@ -18,6 +21,7 @@
   },
   "homepage": "https://github.com/null3000/StarWarsWeatherExtension#readme",
   "devDependencies": {
+    "happy-dom": "^14.12.0",
     "webextension-polyfill": "^0.10.0"
   }
 }

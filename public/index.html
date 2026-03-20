@@ -11,22 +11,33 @@
                 <source src="assets/hyperspace.mp4" type="video/mp4">
             </video>
           </div>
+
         <section class="top">
             <p id="message"></p>
         </section>
 
-        <section class="center">
-            <div class="center1">
-                <p class="center1Text" id="center1Text"></p>
-            </div>
-            <div class="center2">
-                <p class="planetText" id="planet"></p>
-                <p class="loading" id="loading"></p>
-            </div>
-            <div class="center3">
-                <p class="center3Text" id="center3Text"></p>
-            </div>
-        </section>
+        <div class="center-group">
+            <section class="center">
+                <div class="center1">
+                    <p class="center1Text" id="center1Text"></p>
+                </div>
+                <div class="center2">
+                    <p class="planetText" id="planet"></p>
+                    <p class="loading" id="loading"></p>
+                </div>
+                <div class="center3">
+                    <p class="center3Text" id="center3Text"></p>
+                </div>
+            </section>
+
+            <section class="newtab-extras">
+                <form id="searchForm" class="search-form">
+                    <input type="text" name="q" id="searchInput" class="search-input" autocomplete="off" autofocus>
+                    <ul id="searchSuggestions" class="search-suggestions hidden" role="listbox"></ul>
+                </form>
+                <div id="shortcutsGrid" class="shortcuts-grid"></div>
+            </section>
+        </div>
 
         <section class="bottom">
             <div class="bottomText">
@@ -43,6 +54,8 @@
         <script src="/node_modules/webextension-polyfill/dist/browser-polyfill.min.js"></script>
         <script src="/src/env.js"></script>
         <script type="module" src="/src/app.js"></script>
+        <script type="module" src="/src/newtab.js"></script>
+        <script type="module" src="/src/search.js"></script>
     </div>
 </body>
 </html>

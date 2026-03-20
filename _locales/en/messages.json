@@ -111,7 +111,7 @@
     "message": "$1, It's a Chilly $2"
   },
   "planet_naboo_description": {
-    "message": "This Home of Jar-Jar Binks"
+    "message": "The Home of Jar-Jar Binks"
   },
   "planet_coruscant_name": {
     "message": "Coruscant"
@@ -140,6 +140,24 @@
   "planet_mustafar_description": {
     "message": "Home of Darth Vader"
   },
+  "search_placeholder": {
+    "message": "Search or type a URL"
+  },
+  "popup_newtab_title": {
+    "message": "New Tab Elements"
+  },
+  "popup_newtab_hint": {
+    "message": "Choose which elements appear on the new tab page."
+  },
+  "popup_show_search_bar": {
+    "message": "Show Search Bar"
+  },
+  "popup_show_shortcuts": {
+    "message": "Show Shortcuts"
+  },
+  "popup_show_extras_hyperspace": {
+    "message": "Show search & shortcuts during hyperspace"
+  },
   "popup_title": {
     "message": "Star Wars Weather"
   },
@@ -150,7 +168,7 @@
     "message": "Temperature Units"
   },
   "popup_units_hint": {
-    "message": "Open a new tab or refresh for the unit change to take effect."
+    "message": "Choose your preferred temperature unit."
   },
   "units_fahrenheit_label": {
     "message": "Fahrenheit"
@@ -162,7 +180,7 @@
     "message": "Language"
   },
   "popup_language_hint": {
-    "message": "Translations may not be perfect. Refresh the tab after changing the language."
+    "message": "Translations may not be perfect."
   },
   "language_english_label": {
     "message": "🇺🇸 English"
@@ -177,7 +195,7 @@
     "message": "Manual Location"
   },
   "popup_manual_location_hint": {
-    "message": "If location access is blocked, search for a city (e.g., \"Paris\" or \"Paris, FR\") and choose a result. Open a new tab or refresh to load the change."
+    "message": "If location access is blocked, search for a city (e.g., \"Paris\" or \"Paris, FR\") and choose a result."
   },
   "popup_manual_location_placeholder": {
     "message": "City or City, Country"

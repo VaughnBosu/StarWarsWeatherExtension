@@ -6,21 +6,18 @@ import {
   hasShownGeolocationError,
   markGeolocationAlerted,
   readWeatherCache,
+  STORAGE_KEYS,
   writeWeatherCache
 } from './storage.js';
 import { loadLocalization } from './i18n.js';
-
-const GEOLOCATION_OPTIONS = Object.freeze({
-  enableHighAccuracy: false,
-  timeout: 5000,
-  maximumAge: 600000
-});
-
-const WEATHER_ENDPOINT = 'https://api.openweathermap.org/data/2.5/weather';
-const DEGREE_SYMBOL = '\u00B0';
+import { stateToAbbreviation } from './geo.js';
+import { PLANET_RULES, DEFAULT_PLANET_RULE } from './planets.js';
+import { WEATHER_ENDPOINT, GEOCODING_REVERSE_ENDPOINT, GEOLOCATION_OPTIONS, DEGREE_SYMBOL } from './config.js';
 
 const DEBUG = true;
 const DEBUG_FORCE_PLANET_ID = null; // Set to null to disable
+
+const SHOULD_INIT = !(typeof globalThis !== 'undefined' && globalThis.__SWW_SKIP_INIT__ === true);
 
 function debug(...args) {
   if (DEBUG) {
@@ -36,79 +33,13 @@ function buildManualLocationKey(location) {
   return `manual:${location.lat.toFixed(4)},${location.lon.toFixed(4)}`;
 }
 
-const PLANET_RULES = [
-  {
-    id: 'hoth',
-    name: 'Hoth',
-    backgrounds: { day: 'hoth', night: 'hothNight' },
-    predicate: ({ tempF, weatherMain }) => weatherMain === 'Snow' || tempF <= 32
-  },
-  {
-    id: 'kamino',
-    name: 'Kamino',
-    backgrounds: { day: 'kamino', night: 'kaminoNight' },
-    predicate: ({ weatherMain }) => ['Rain', 'Drizzle', 'Thunderstorm'].includes(weatherMain)
-  },
-  {
-    id: 'endor',
-    name: 'Endor',
-    backgrounds: { day: 'endor', night: 'endorNight' },
-    predicate: ({ weatherMain }) => ['Fog', 'Mist'].includes(weatherMain)
-  },
-  {
-    id: 'bespin',
-    name: 'Bespin',
-    backgrounds: { day: 'bespin', night: 'bespinNight' },
-    predicate: ({ windSpeedMph }) => windSpeedMph >= 35
-  },
-  {
-    id: 'scarif',
-    name: 'Scarif',
-    backgrounds: { day: 'scarif', night: 'scarifNight' },
-    predicate: ({ tempF, weatherMain, weatherDescription }) => {
-      const normalizedDescription = weatherDescription.toLowerCase();
-      return tempF >= 70 && tempF <= 85 && (weatherMain === 'Clear' || normalizedDescription.includes('few clouds'));
-    }
-  },
-  {
-    id: 'dagobah',
-    name: 'Dagobah',
-    backgrounds: { day: 'dagobah', night: 'dagobahNight' },
-    predicate: ({ humidity, tempF }) => humidity >= 93 && tempF >= 80
-  },
-  {
-    id: 'naboo',
-    name: 'Naboo',
-    backgrounds: { day: 'naboo', night: 'nabooNight' },
-    predicate: ({ tempF }) => tempF >= 33 && tempF <= 54
-  },
-  {
-    id: 'coruscant',
-    name: 'Coruscant',
-    backgrounds: { day: 'coruscant', night: 'coruscantNight' },
-    predicate: ({ tempF }) => tempF >= 55 && tempF < 80
-  },
-  {
-    id: 'tatooine',
-    name: 'Tatooine',
-    backgrounds: { day: 'tatooine', night: 'tatooineNight' },
-    predicate: ({ tempF }) => tempF >= 80 && tempF <= 95
-  },
-  {
-    id: 'mustafar',
-    name: 'Mustafar',
-    backgrounds: { day: 'mustafar', night: 'mustafarNight' },
-    predicate: ({ tempF }) => tempF >= 96
-  }
-];
+const WATCHED_SETTINGS = new Set([
+  STORAGE_KEYS.unit,
+  STORAGE_KEYS.language,
+  STORAGE_KEYS.manualLocation
+]);
 
-const DEFAULT_PLANET_RULE = {
-  id: 'coruscant',
-  name: 'Coruscant',
-  backgrounds: { day: 'coruscant', night: 'coruscantNight' }
-};
-
-(async function init() {
+async function refreshWeather() {
   const preferredLanguage = getPreferredLanguage();
   const unit = getPreferredUnit();
   const manualLocation = getManualLocation();
@@ -190,7 +121,18 @@ const DEFAULT_PLANET_RULE = {
     console.error('Unable to refresh weather data', error);
     showErrorState(localization);
   }
-})();
+}
+
+if (SHOULD_INIT) {
+  refreshWeather();
+
+  window.addEventListener('storage', (event) => {
+    if (WATCHED_SETTINGS.has(event.key)) {
+      debug('Settings changed via storage event', event.key);
+      refreshWeather();
+    }
+  });
+}
 
 function showLoadingState(localization, locationName = null) {
   const loadingElement = document.getElementById('loading');
@@ -568,7 +510,7 @@ async function fetchLocationDetails(latitude, longitude) {
     throw new Error('API key is not available');
   }
 
-  const url = new URL('https://api.openweathermap.org/geo/1.0/reverse');
+  const url = new URL(GEOCODING_REVERSE_ENDPOINT);
   url.searchParams.set('lat', latitude);
   url.searchParams.set('lon', longitude);
   url.searchParams.set('limit', '1');
@@ -587,70 +529,23 @@ async function fetchLocationDetails(latitude, longitude) {
   return data[0];
 }
 
-function stateToAbbreviation(state) {
-  if (!state) {
-    return '';
-  }
-
-  const trimmed = state.trim();
-  if (trimmed.length === 2 && /^[A-Za-z]{2}$/.test(trimmed)) {
-    return trimmed.toUpperCase();
-  }
-
-  const entry = Object.entries(US_STATE_MAP).find(([, fullName]) => fullName.toLowerCase() === trimmed.toLowerCase());
-  return entry ? entry[0] : trimmed;
-}
-
-const US_STATE_MAP = {
-  AL: 'Alabama',
-  AK: 'Alaska',
-  AZ: 'Arizona',
-  AR: 'Arkansas',
-  CA: 'California',
-  CO: 'Colorado',
-  CT: 'Connecticut',
-  DE: 'Delaware',
-  DC: 'District of Columbia',
-  FL: 'Florida',
-  GA: 'Georgia',
-  HI: 'Hawaii',
-  ID: 'Idaho',
-  IL: 'Illinois',
-  IN: 'Indiana',
-  IA: 'Iowa',
-  KS: 'Kansas',
-  KY: 'Kentucky',
-  LA: 'Louisiana',
-  ME: 'Maine',
-  MD: 'Maryland',
-  MA: 'Massachusetts',
-  MI: 'Michigan',
-  MN: 'Minnesota',
-  MS: 'Mississippi',
-  MO: 'Missouri',
-  MT: 'Montana',
-  NE: 'Nebraska',
-  NV: 'Nevada',
-  NH: 'New Hampshire',
-  NJ: 'New Jersey',
-  NM: 'New Mexico',
-  NY: 'New York',
-  NC: 'North Carolina',
-  ND: 'North Dakota',
-  OH: 'Ohio',
-  OK: 'Oklahoma',
-  OR: 'Oregon',
-  PA: 'Pennsylvania',
-  RI: 'Rhode Island',
-  SC: 'South Carolina',
-  SD: 'South Dakota',
-  TN: 'Tennessee',
-  TX: 'Texas',
-  UT: 'Utah',
-  VT: 'Vermont',
-  VA: 'Virginia',
-  WA: 'Washington',
-  WV: 'West Virginia',
-  WI: 'Wisconsin',
-  WY: 'Wyoming'
+export {
+  applyWeatherToUi,
+  buildManualLocationKey,
+  buildViewModel,
+  fetchLocationDetails,
+  fetchWeather,
+  formatDisplayName,
+  formatLastUpdated,
+  refreshWeather,
+  requestGeolocation,
+  resolveLocation,
+  resolveLocationName,
+  resolveTimeOfDay,
+  selectBackground,
+  selectPlanetRule,
+  showErrorState,
+  showLoadingState,
+  stateToAbbreviation,
+  updateLocationLabel
 };
