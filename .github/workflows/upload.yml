@@ -1,0 +1,30 @@
+name: Upload to Chrome Web Store
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create env.js
+        run: echo "const API_KEY = '${{ secrets.OPENWEATHER_API_KEY }}';" > src/env.js
+
+      - name: Install cws-cli
+        run: |
+          curl -LO https://github.com/null3000/cws-cli/releases/latest/download/cws_linux_amd64.tar.gz
+          tar xzf cws_linux_amd64.tar.gz
+          sudo mv cws /usr/local/bin/
+
+      - name: Upload extension
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          cws upload . -e ${{ vars.EXTENSION_ID }}
+          cws publish --staged
