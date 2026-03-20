@@ -27,4 +27,4 @@ jobs:
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: |
           cws upload . -e ${{ vars.EXTENSION_ID }}
-          cws publish --staged
+          cws publish --staged -e ${{ vars.EXTENSION_ID }}
