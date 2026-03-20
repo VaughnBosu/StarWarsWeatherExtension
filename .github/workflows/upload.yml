@@ -10,6 +10,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
       - name: Create env.js
         run: echo "const API_KEY = '${{ secrets.OPENWEATHER_API_KEY }}';" > src/env.js
 
