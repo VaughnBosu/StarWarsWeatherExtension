@@ -6,7 +6,8 @@ const STORAGE_KEYS = Object.freeze({
   manualLocation: 'manualLocation',
   showSearchBar: 'showSearchBar',
   showShortcuts: 'showShortcuts',
-  showExtrasInHyperspace: 'showExtrasInHyperspace'
+  showExtrasInHyperspace: 'showExtrasInHyperspace',
+  onboardingComplete: 'onboardingComplete'
 });
 
 const LEGACY_CACHE_KEYS = Object.freeze([
@@ -244,6 +245,14 @@ export function getShowExtrasInHyperspace() {
 
 export function setShowExtrasInHyperspace(value) {
   setBooleanSetting(STORAGE_KEYS.showExtrasInHyperspace, value);
+}
+
+export function isOnboardingComplete() {
+  return getBooleanSetting(STORAGE_KEYS.onboardingComplete);
+}
+
+export function markOnboardingComplete() {
+  setBooleanSetting(STORAGE_KEYS.onboardingComplete, true);
 }
 
 export { STORAGE_KEYS };

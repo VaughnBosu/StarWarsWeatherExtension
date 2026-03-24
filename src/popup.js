@@ -131,22 +131,46 @@ function attachNewtabHandlers() {
   const extrasInHyperspaceCheckbox = document.getElementById('showExtrasInHyperspace');
 
   if (searchBarCheckbox) {
-    searchBarCheckbox.addEventListener('change', (event) => {
+    searchBarCheckbox.addEventListener('change', async (event) => {
+      clearPermissionHint(searchBarCheckbox);
+      if (event.target.checked && typeof chrome !== 'undefined' && chrome.permissions) {
+        try {
+          const granted = await chrome.permissions.request({ permissions: ['search', 'history'] });
+          if (!granted) {
+            searchBarCheckbox.checked = false;
+            showPermissionHint(searchBarCheckbox, 'popup_permission_denied_search');
+            return;
+          }
+        } catch {
+          searchBarCheckbox.checked = false;
+          showPermissionHint(searchBarCheckbox, 'popup_permission_denied_search');
+          return;
+        }
+      }
       setShowSearchBar(event.target.checked);
       syncHyperspaceCheckboxUi(getShowSearchBar() || getShowShortcuts());
-      if (event.target.checked && typeof chrome !== 'undefined' && chrome.permissions) {
-        chrome.permissions.request({ permissions: ['search', 'history'] }).catch(() => {});
-      }
     });
   }
 
   if (shortcutsCheckbox) {
-    shortcutsCheckbox.addEventListener('change', (event) => {
+    shortcutsCheckbox.addEventListener('change', async (event) => {
+      clearPermissionHint(shortcutsCheckbox);
+      if (event.target.checked && typeof chrome !== 'undefined' && chrome.permissions) {
+        try {
+          const granted = await chrome.permissions.request({ permissions: ['topSites'] });
+          if (!granted) {
+            shortcutsCheckbox.checked = false;
+            showPermissionHint(shortcutsCheckbox, 'popup_permission_denied_shortcuts');
+            return;
+          }
+        } catch {
+          shortcutsCheckbox.checked = false;
+          showPermissionHint(shortcutsCheckbox, 'popup_permission_denied_shortcuts');
+          return;
+        }
+      }
       setShowShortcuts(event.target.checked);
       syncHyperspaceCheckboxUi(getShowSearchBar() || getShowShortcuts());
-      if (event.target.checked && typeof chrome !== 'undefined' && chrome.permissions) {
-        chrome.permissions.request({ permissions: ['topSites'] }).catch(() => {});
-      }
     });
   }
 
@@ -154,6 +178,26 @@ function attachNewtabHandlers() {
     extrasInHyperspaceCheckbox.addEventListener('change', (event) => {
       setShowExtrasInHyperspace(event.target.checked);
     });
+  }
+}
+
+function showPermissionHint(checkbox, messageKey) {
+  const label = checkbox.closest('label');
+  if (!label) return;
+  clearPermissionHint(checkbox);
+  const hint = document.createElement('p');
+  hint.className = 'permission-hint';
+  const localized = currentLocalization?.getMessage(messageKey);
+  hint.textContent = localized || 'Permission required. Toggle this on again to re-request.';
+  label.insertAdjacentElement('afterend', hint);
+}
+
+function clearPermissionHint(checkbox) {
+  const label = checkbox.closest('label');
+  if (!label) return;
+  const existing = label.nextElementSibling;
+  if (existing && existing.classList.contains('permission-hint')) {
+    existing.remove();
   }
 }
 
@@ -426,6 +470,7 @@ export {
   attachManualLocationHandlers,
   attachNewtabHandlers,
   attachUnitHandlers,
+  clearPermissionHint,
   fetchManualLocationSuggestions,
   formatManualLocationDisplay,
   getManualLocationResultsContainer,
@@ -437,6 +482,7 @@ export {
   refreshLocalization,
   renderManualLocationMessage,
   renderManualLocationOptions,
+  showPermissionHint,
   stateToAbbreviation,
   syncHyperspaceCheckboxUi,
   synchroniseControls

@@ -158,6 +158,12 @@
   "popup_show_extras_hyperspace": {
     "message": "Mostrar barra y atajos durante el hiperespacio"
   },
+  "popup_permission_denied_search": {
+    "message": "Permiso requerido. Activa esta opción de nuevo para volver a solicitarlo."
+  },
+  "popup_permission_denied_shortcuts": {
+    "message": "Permiso requerido. Activa esta opción de nuevo para volver a solicitarlo."
+  },
   "popup_title": {
     "message": "Star Wars Weather"
   },
@@ -235,5 +241,158 @@
   },
   "popup_link_survey": {
     "message": "Completa una breve <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">encuesta</a> o <a href=\"https://www.buymeacoffee.com/null3000\" target=\"_blank\" rel=\"noopener\">invítame un café</a>."
+  },
+  "onboarding_welcome_title": {
+    "message": "Bienvenido a Star Wars Weather"
+  },
+  "onboarding_welcome_subtitle": {
+    "message": "Tu nueva pestaña mostrará el clima comparado con planetas de Star Wars. Vamos a configurar tu extensión."
+  },
+  "onboarding_welcome_cta": {
+    "message": "Comenzar"
+  },
+  "onboarding_language_label": {
+    "message": "Idioma"
+  },
+  "onboarding_location_title": {
+    "message": "¿Cómo encontramos tu clima?"
+  },
+  "onboarding_location_subtitle": {
+    "message": "Elige cómo la extensión determina tu ubicación."
+  },
+  "onboarding_location_auto_label": {
+    "message": "Usar mi ubicación"
+  },
+  "onboarding_location_auto_hint": {
+    "message": "Detectar tu ubicación automáticamente"
+  },
+  "onboarding_location_manual_label": {
+    "message": "Buscar una ciudad"
+  },
+  "onboarding_location_manual_hint": {
+    "message": "Escribe el nombre de una ciudad"
+  },
+  "onboarding_auto_detecting": {
+    "message": "Detectando tu ubicación..."
+  },
+  "onboarding_auto_success": {
+    "message": "Ubicación encontrada: $1"
+  },
+  "onboarding_auto_error": {
+    "message": "No pudimos acceder a tu ubicación. Los servicios de ubicación pueden estar desactivados."
+  },
+  "onboarding_auto_retry": {
+    "message": "Intentar de nuevo"
+  },
+  "onboarding_auto_switch_manual": {
+    "message": "Elegir una ciudad"
+  },
+  "onboarding_troubleshoot_toggle": {
+    "message": "Cómo activar los servicios de ubicación"
+  },
+  "onboarding_troubleshoot_chrome_title": {
+    "message": "En Chrome:"
+  },
+  "onboarding_troubleshoot_chrome_steps": {
+    "message": "Ve a Configuración > Privacidad y seguridad > Configuración de sitios > Ubicación, y activa \"Los sitios pueden solicitar tu ubicación\"."
+  },
+  "onboarding_troubleshoot_mac_title": {
+    "message": "En macOS:"
+  },
+  "onboarding_troubleshoot_mac_steps": {
+    "message": "Abre Ajustes del Sistema > Privacidad y seguridad > Servicios de ubicación. Asegúrate de que esté activado y Google Chrome esté marcado."
+  },
+  "onboarding_troubleshoot_windows_title": {
+    "message": "En Windows:"
+  },
+  "onboarding_troubleshoot_windows_steps": {
+    "message": "Abre Configuración > Privacidad > Ubicación y asegúrate de que el acceso a la ubicación esté activado."
+  },
+  "onboarding_manual_search_placeholder": {
+    "message": "Ciudad o Ciudad, País"
+  },
+  "onboarding_manual_search_btn": {
+    "message": "Buscar"
+  },
+  "onboarding_manual_no_results": {
+    "message": "No se encontraron ciudades. Intenta otra búsqueda."
+  },
+  "onboarding_manual_error": {
+    "message": "No se pudo buscar ciudades. Inténtalo de nuevo."
+  },
+  "onboarding_manual_searching": {
+    "message": "Buscando..."
+  },
+  "onboarding_back_to_choices": {
+    "message": "Volver"
+  },
+  "onboarding_prefs_title": {
+    "message": "Configura tus preferencias"
+  },
+  "onboarding_prefs_subtitle": {
+    "message": "Personaliza tu experiencia de nueva pestaña."
+  },
+  "onboarding_prefs_units_label": {
+    "message": "Unidades de temperatura"
+  },
+  "onboarding_prefs_search_label": {
+    "message": "Mostrar barra de búsqueda"
+  },
+  "onboarding_prefs_search_hint": {
+    "message": "Agrega una barra de búsqueda a tu nueva pestaña"
+  },
+  "onboarding_prefs_shortcuts_label": {
+    "message": "Mostrar atajos"
+  },
+  "onboarding_prefs_shortcuts_hint": {
+    "message": "Muestra tus sitios más visitados en tu nueva pestaña"
+  },
+  "onboarding_prefs_continue": {
+    "message": "Continuar"
+  },
+  "onboarding_permission_denied": {
+    "message": "Permiso requerido. Activa esta opción de nuevo para volver a solicitarlo."
+  },
+  "onboarding_done_title": {
+    "message": "¡Todo listo!"
+  },
+  "onboarding_done_subtitle": {
+    "message": "Abre una nueva pestaña para ver tu clima de Star Wars."
+  },
+  "onboarding_done_location_auto": {
+    "message": "Usando tu ubicación actual"
+  },
+  "onboarding_done_location_manual": {
+    "message": "Mostrando el clima de $1"
+  },
+  "onboarding_done_units": {
+    "message": "Unidades: $1"
+  },
+  "onboarding_done_search_on": {
+    "message": "Barra de búsqueda: Activada"
+  },
+  "onboarding_done_search_off": {
+    "message": "Barra de búsqueda: Desactivada"
+  },
+  "onboarding_done_shortcuts_on": {
+    "message": "Atajos: Activados"
+  },
+  "onboarding_done_shortcuts_off": {
+    "message": "Atajos: Desactivados"
+  },
+  "onboarding_done_hint": {
+    "message": "Puedes cambiar esto en cualquier momento desde los ajustes de la extensión."
+  },
+  "onboarding_done_cta": {
+    "message": "Abrir nueva pestaña"
+  },
+  "onboarding_troubleshoot_faq_link": {
+    "message": "Para instrucciones detalladas, consulta las <a href=\"./FAQ.html#location-services\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a>."
+  },
+  "onboarding_done_bookmarks_tip": {
+    "message": "¿No ves la barra de marcadores? Presiona Ctrl+Shift+B (Cmd+Shift+B en Mac) para mostrarla. <a href=\"./FAQ.html#bookmarks\" target=\"_blank\" rel=\"noopener\">Más información</a>"
+  },
+  "onboarding_done_faq_link": {
+    "message": "¿Tienes preguntas? Consulta las <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a> para más información."
   }
 }

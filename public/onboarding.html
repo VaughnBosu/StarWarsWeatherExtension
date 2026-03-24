@@ -1,73 +1,158 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<title>Thank You for Installing Star Wars Weather</title>
-	<link rel="stylesheet" href="./onboarding.css">
-	<meta charset="UTF-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Wars Weather</title>
+    <link rel="stylesheet" href="./onboarding.css">
 </head>
-
 <body>
-	<div class="container">
-		<img class="logo" src="./assets/logo.webp" alt="Star Wars Weather Logo">
-		<h1>Thank You for Installing Star Wars Weather!</h1>
-		<h2>(please read)</h2>
-		<p>Please make sure you have location services turned on so that this extension can work properly. Instructions are below.</p>
-		<p>If you have any issues, feedback, or suggestions, please don't hesitate to <a href="https://chrome.google.com/webstore/detail/star-wars-weather/hjphhbgleggdljkdlmlblbamlnkmdgag?hl=en&authuser=0">contact me</a> via the "support tab".</p>
-		
+    <div class="onboarding">
+        <!-- Step indicator -->
+        <div class="step-indicator">
+            <span class="dot dot--active" data-dot="1"></span>
+            <span class="dot" data-dot="2"></span>
+            <span class="dot" data-dot="3"></span>
+            <span class="dot" data-dot="4"></span>
+        </div>
 
-		<h2><a href="./FAQ.html" target="_blank" rel="noopener">FAQ</a></h2>
-		<h3>How do I change the temperature unit / language? </h3>
-		<p>To access all available settings, click on the puzzle piece icon located in the top right corner of your
-			Chrome/Firefox browser and choose "Star Wars Weather" from the options. This will open a dropdown menu from which
-			you can make your desired changes.</p>
-		<br>
+        <!-- STEP 1: Welcome + Language -->
+        <section class="onboarding-step step--active" data-step="1">
+            <img class="onboarding__logo" src="./assets/logo.webp" alt="Star Wars Weather">
+            <h1 class="onboarding__title" data-i18n="onboarding_welcome_title"></h1>
+            <p class="onboarding__subtitle" data-i18n="onboarding_welcome_subtitle"></p>
+            <div class="language-selector">
+                <label class="radio-option">
+                    <input type="radio" name="onboarding-lang" value="en" checked>
+                    <span data-i18n="language_english_label"></span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="onboarding-lang" value="es">
+                    <span data-i18n="language_spanish_label"></span>
+                </label>
+            </div>
+            <button type="button" class="onboarding__btn onboarding__btn--primary" id="startSetup" data-i18n="onboarding_welcome_cta"></button>
+        </section>
 
-		<h3>Where did my bookmarks go? </h3>
-		<p>Bookmarks automatically get hidden but it is very easy to show them, simply press ctrl+shift+b (commad+shift+b on a mac). </p>
-		<br>
+        <!-- STEP 2: Location Choice -->
+        <section class="onboarding-step" data-step="2">
+            <h2 class="onboarding__title" data-i18n="onboarding_location_title"></h2>
+            <p class="onboarding__subtitle" data-i18n="onboarding_location_subtitle"></p>
 
-		<h3> How do I turn on location services?</h3>
-		<ol>
-			<li>Click on the three dots (More) icon located in the top right-hand corner of the browser window.</li>
-			<li>Click on "Settings" from the dropdown menu.</li>
-			<li>On The right side, click "privacy and security"</li>
-			<li>Click on "Site settings".</li>
-			<li>Scroll down and click on "Location".</li>
-			<li>Click "Sites can ask for your location" to turn it on.</li>
-		</ol>
+            <!-- Two-card choice -->
+            <div class="location-choices" id="locationChoices">
+                <button type="button" class="location-choice" id="chooseAutoLocation">
+                    <span class="location-choice__icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+                    <span class="location-choice__label" data-i18n="onboarding_location_auto_label"></span>
+                    <span class="location-choice__hint" data-i18n="onboarding_location_auto_hint"></span>
+                </button>
+                <button type="button" class="location-choice" id="chooseManualLocation">
+                    <span class="location-choice__icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+                    <span class="location-choice__label" data-i18n="onboarding_location_manual_label"></span>
+                    <span class="location-choice__hint" data-i18n="onboarding_location_manual_hint"></span>
+                </button>
+            </div>
 
-		<h4>IMPORTANT: If you are using a Mac, please follow these sets of instructions also:</h4>
-		<ol>
-			<li>Click on the Apple menu icon located in the top left-hand corner of your screen.</li>
-			<li>Click on "System Preferences" from the dropdown menu.</li>
-			<li>Click on "Security &amp; Privacy".</li>
-			<li>Click on the "Privacy" tab.</li>
-			<li>Scroll down and click on "Location Services".</li>
-			<li>If the padlock icon in the bottom left-hand corner of the window is locked, click on it and enter your
-				administrator password to unlock it.</li>
-			<li>Scroll down and find "Google Chrome" in the list of apps.</li>
-			<li>Make sure the checkbox next to "Google Chrome" is checked.</li>
-		</ol>
+            <!-- Auto-location status (hidden by default) -->
+            <div class="auto-location-status hidden" id="autoLocationStatus">
+                <div class="spinner" id="autoSpinner"></div>
+                <p class="status-message" id="autoLocationMessage" data-i18n="onboarding_auto_detecting"></p>
+                <div class="status-actions hidden" id="autoLocationActions"></div>
 
-		<h3>There is a weird footer that says "Star Wars Weather" at the bottom of my screen, how do I remove it?</h3>
-		<p>Chrome automatically adds this, to remove it: right-click on the gray Chrome footer at the bottom and select "Hide Chrome footer". This will give you the full clean experience.</p>
-		<br>
+                <!-- Troubleshooting (hidden until error) -->
+                <div class="troubleshoot hidden" id="troubleshoot">
+                    <button type="button" class="troubleshoot__toggle" id="troubleshootToggle" data-i18n="onboarding_troubleshoot_toggle"></button>
+                    <div class="troubleshoot__content">
+                        <div class="troubleshoot__section">
+                            <strong data-i18n="onboarding_troubleshoot_chrome_title"></strong>
+                            <p data-i18n="onboarding_troubleshoot_chrome_steps"></p>
+                        </div>
+                        <div class="troubleshoot__section">
+                            <strong data-i18n="onboarding_troubleshoot_mac_title"></strong>
+                            <p data-i18n="onboarding_troubleshoot_mac_steps"></p>
+                        </div>
+                        <div class="troubleshoot__section">
+                            <strong data-i18n="onboarding_troubleshoot_windows_title"></strong>
+                            <p data-i18n="onboarding_troubleshoot_windows_steps"></p>
+                        </div>
+                        <p class="troubleshoot__faq-link" data-i18n-html="onboarding_troubleshoot_faq_link"></p>
+                    </div>
+                </div>
 
-		<h3>How often does the extension update the weather information?</h3>
-		<p>The extension will get the most accurate weather information when you open a new tab. It will keep that
-			information stored until the end of the hour. For example, if you open a new tab at 8:37, the extension will keep
-			the weather information stored until 9:00. This is done to make sure the information is accurate and to reduce the
-			time it takes to load the information again.</p>
+                <button type="button" class="onboarding__btn--link hidden" id="autoBackToChoices" data-i18n="onboarding_back_to_choices"></button>
+            </div>
 
+            <!-- Manual search (hidden by default) -->
+            <div class="manual-search hidden" id="manualSearchArea">
+                <div class="manual-search__input-row">
+                    <input type="text" id="manualLocationInput" class="text-input" data-i18n-placeholder="onboarding_manual_search_placeholder">
+                    <button type="button" class="onboarding__btn onboarding__btn--primary" id="manualSearchBtn" data-i18n="onboarding_manual_search_btn"></button>
+                </div>
+                <div id="manualSearchResults" class="selection-list" role="listbox"></div>
+                <button type="button" class="onboarding__btn--link" id="manualBackToChoices" data-i18n="onboarding_back_to_choices"></button>
+            </div>
+        </section>
 
-		<h3>The hyperspace loading screen is looping forever, what do I do?</h3>
-		<p>First, make sure that you have locations services on, you can do this by following the instructions above. If you
-			have done that properly, and it still doesn't work, report the issue <a
-				href="https://github.com/null3000/StarWarsWeatherExtension/issues">here</a> or <a
-				href="https://chrome.google.com/webstore/detail/star-wars-weather/hjphhbgleggdljkdlmlblbamlnkmdgag?hl=en&authuser=0">here</a> on the "support" tab, and I will repsond ASAP.</p>
+        <!-- STEP 3: Preferences -->
+        <section class="onboarding-step" data-step="3">
+            <h2 class="onboarding__title" data-i18n="onboarding_prefs_title"></h2>
+            <p class="onboarding__subtitle" data-i18n="onboarding_prefs_subtitle"></p>
 
-		<h3>Open a new tab to get started!</h2>
-	</div>
+            <div class="preference-groups">
+                <!-- Temperature units -->
+                <div class="preference-group">
+                    <p class="preference-group__label" data-i18n="onboarding_prefs_units_label"></p>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="onboarding-unit" value="fahrenheit" checked>
+                            <span data-i18n="units_fahrenheit_label"></span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="onboarding-unit" value="celsius">
+                            <span data-i18n="units_celsius_label"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Search bar -->
+                <div class="preference-group" id="searchBarGroup">
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="onboardingSearchBar">
+                        <div class="checkbox-row__text">
+                            <span class="checkbox-row__label" data-i18n="onboarding_prefs_search_label"></span>
+                            <span class="checkbox-row__hint" data-i18n="onboarding_prefs_search_hint"></span>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Shortcuts -->
+                <div class="preference-group" id="shortcutsGroup">
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="onboardingShortcuts">
+                        <div class="checkbox-row__text">
+                            <span class="checkbox-row__label" data-i18n="onboarding_prefs_shortcuts_label"></span>
+                            <span class="checkbox-row__hint" data-i18n="onboarding_prefs_shortcuts_hint"></span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <button type="button" class="onboarding__btn onboarding__btn--primary" id="prefsNext" data-i18n="onboarding_prefs_continue"></button>
+        </section>
+
+        <!-- STEP 4: Done -->
+        <section class="onboarding-step" data-step="4">
+            <h2 class="onboarding__title" data-i18n="onboarding_done_title"></h2>
+            <p class="onboarding__subtitle" data-i18n="onboarding_done_subtitle"></p>
+            <div class="summary" id="summary"></div>
+            <p class="onboarding__hint" data-i18n="onboarding_done_hint"></p>
+            <p class="onboarding__hint" data-i18n-html="onboarding_done_bookmarks_tip"></p>
+            <p class="onboarding__hint" data-i18n-html="onboarding_done_faq_link"></p>
+            <button type="button" class="onboarding__btn onboarding__btn--primary" id="openNewTab" data-i18n="onboarding_done_cta"></button>
+        </section>
+    </div>
+
+    <script src="/src/env.js"></script>
+    <script type="module" src="/src/onboarding.js"></script>
 </body>
-
 </html>

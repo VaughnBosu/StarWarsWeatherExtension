@@ -286,6 +286,12 @@ body {
     padding: 4px 0;
 }
 
+.permission-hint {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--accent);
+}
+
 a {
     color: var(--accent);
     font-weight: 600;

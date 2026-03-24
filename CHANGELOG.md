@@ -98,3 +98,12 @@
 - switched from npm to Bun
 - updated localization strings (EN + ES), minor typo and FAQ fixes
 - added github actions workflow for pushing to chrome web store using [cws-cli](https://github.com/null3000/cws-cli)
+
+# v2.2
+- redesigned onboarding into an interactive 4-step setup wizard
+- users now choose between automatic and manual location during setup
+- added unit, search bar, and shortcuts preferences to onboarding
+- live location detection with city name confirmation
+- location troubleshooting guide built into onboarding
+- fixed permission handling race condition
+- FAQ improvements and deep linking

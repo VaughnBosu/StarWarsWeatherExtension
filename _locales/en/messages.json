@@ -158,6 +158,12 @@
   "popup_show_extras_hyperspace": {
     "message": "Show search & shortcuts during hyperspace"
   },
+  "popup_permission_denied_search": {
+    "message": "Permission required. Toggle this on again to re-request."
+  },
+  "popup_permission_denied_shortcuts": {
+    "message": "Permission required. Toggle this on again to re-request."
+  },
   "popup_title": {
     "message": "Star Wars Weather"
   },
@@ -235,5 +241,158 @@
   },
   "popup_link_survey": {
     "message": "Take a quick <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">survey</a> or <a href=\"https://www.buymeacoffee.com/null3000\" target=\"_blank\" rel=\"noopener\">buy me a coffee</a>."
+  },
+  "onboarding_welcome_title": {
+    "message": "Welcome to Star Wars Weather"
+  },
+  "onboarding_welcome_subtitle": {
+    "message": "Your new tab page will show weather conditions matched to Star Wars planets. Let's get you set up."
+  },
+  "onboarding_welcome_cta": {
+    "message": "Get Started"
+  },
+  "onboarding_language_label": {
+    "message": "Language"
+  },
+  "onboarding_location_title": {
+    "message": "How should we find your weather?"
+  },
+  "onboarding_location_subtitle": {
+    "message": "Choose how the extension determines your location."
+  },
+  "onboarding_location_auto_label": {
+    "message": "Use My Location"
+  },
+  "onboarding_location_auto_hint": {
+    "message": "Automatically detect your location"
+  },
+  "onboarding_location_manual_label": {
+    "message": "Search for a City"
+  },
+  "onboarding_location_manual_hint": {
+    "message": "Type a city name to set your location"
+  },
+  "onboarding_auto_detecting": {
+    "message": "Detecting your location..."
+  },
+  "onboarding_auto_success": {
+    "message": "Location found: $1"
+  },
+  "onboarding_auto_error": {
+    "message": "We couldn't access your location. Location services may be disabled."
+  },
+  "onboarding_auto_retry": {
+    "message": "Try Again"
+  },
+  "onboarding_auto_switch_manual": {
+    "message": "Choose a city instead"
+  },
+  "onboarding_troubleshoot_toggle": {
+    "message": "How to enable location services"
+  },
+  "onboarding_troubleshoot_chrome_title": {
+    "message": "In Chrome:"
+  },
+  "onboarding_troubleshoot_chrome_steps": {
+    "message": "Go to Settings > Privacy and Security > Site Settings > Location, then enable \"Sites can ask for your location\"."
+  },
+  "onboarding_troubleshoot_mac_title": {
+    "message": "On macOS:"
+  },
+  "onboarding_troubleshoot_mac_steps": {
+    "message": "Open System Settings > Privacy & Security > Location Services. Make sure it's turned on and Google Chrome is checked."
+  },
+  "onboarding_troubleshoot_windows_title": {
+    "message": "On Windows:"
+  },
+  "onboarding_troubleshoot_windows_steps": {
+    "message": "Open Settings > Privacy > Location and make sure location access is turned on."
+  },
+  "onboarding_manual_search_placeholder": {
+    "message": "City or City, Country"
+  },
+  "onboarding_manual_search_btn": {
+    "message": "Search"
+  },
+  "onboarding_manual_no_results": {
+    "message": "No matching cities found. Try a different search."
+  },
+  "onboarding_manual_error": {
+    "message": "Could not search for cities. Please try again."
+  },
+  "onboarding_manual_searching": {
+    "message": "Searching..."
+  },
+  "onboarding_back_to_choices": {
+    "message": "Back"
+  },
+  "onboarding_prefs_title": {
+    "message": "Set Your Preferences"
+  },
+  "onboarding_prefs_subtitle": {
+    "message": "Customize your new tab experience."
+  },
+  "onboarding_prefs_units_label": {
+    "message": "Temperature Units"
+  },
+  "onboarding_prefs_search_label": {
+    "message": "Show Search Bar"
+  },
+  "onboarding_prefs_search_hint": {
+    "message": "Add a search bar to your new tab page"
+  },
+  "onboarding_prefs_shortcuts_label": {
+    "message": "Show Shortcuts"
+  },
+  "onboarding_prefs_shortcuts_hint": {
+    "message": "Show your most visited sites on your new tab page"
+  },
+  "onboarding_prefs_continue": {
+    "message": "Continue"
+  },
+  "onboarding_permission_denied": {
+    "message": "Permission required. Toggle this on again to re-request."
+  },
+  "onboarding_done_title": {
+    "message": "You're All Set!"
+  },
+  "onboarding_done_subtitle": {
+    "message": "Open a new tab to see your Star Wars weather."
+  },
+  "onboarding_done_location_auto": {
+    "message": "Using your current location"
+  },
+  "onboarding_done_location_manual": {
+    "message": "Showing weather for $1"
+  },
+  "onboarding_done_units": {
+    "message": "Units: $1"
+  },
+  "onboarding_done_search_on": {
+    "message": "Search bar: On"
+  },
+  "onboarding_done_search_off": {
+    "message": "Search bar: Off"
+  },
+  "onboarding_done_shortcuts_on": {
+    "message": "Shortcuts: On"
+  },
+  "onboarding_done_shortcuts_off": {
+    "message": "Shortcuts: Off"
+  },
+  "onboarding_done_hint": {
+    "message": "You can change these anytime from the extension settings."
+  },
+  "onboarding_done_cta": {
+    "message": "Open New Tab"
+  },
+  "onboarding_troubleshoot_faq_link": {
+    "message": "For detailed steps, see the <a href=\"./FAQ.html#location-services\" target=\"_blank\" rel=\"noopener\">full FAQ</a>."
+  },
+  "onboarding_done_bookmarks_tip": {
+    "message": "Bookmarks bar hidden? Press Ctrl+Shift+B (Cmd+Shift+B on Mac) to show it. <a href=\"./FAQ.html#bookmarks\" target=\"_blank\" rel=\"noopener\">Learn more</a>"
+  },
+  "onboarding_done_faq_link": {
+    "message": "Have questions? Check the <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">FAQ</a> for tips on the Chrome footer, weather updates, and more."
   }
 }

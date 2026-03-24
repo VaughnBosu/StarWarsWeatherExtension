@@ -4,6 +4,7 @@ import {
   getPreferredLanguage,
   getPreferredUnit,
   hasShownGeolocationError,
+  isOnboardingComplete,
   markGeolocationAlerted,
   readWeatherCache,
   STORAGE_KEYS,
@@ -238,7 +239,7 @@ async function resolveLocation(localization) {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, async (error) => {
       debug('Geolocation error', error);
-      if (!hasShownGeolocationError()) {
+      if (!hasShownGeolocationError() && !isOnboardingComplete()) {
         alert(errorMessage);
         markGeolocationAlerted();
       }

@@ -220,7 +220,7 @@ describe('manual location flow', () => {
 });
 
 describe('newtab handlers', () => {
-  test('requests search and history permissions when search bar enabled', () => {
+  test('requests search and history permissions when search bar enabled', async () => {
     const permissionSpy = createSpy(() => Promise.resolve(true));
     globalThis.chrome = {
       permissions: { request: permissionSpy }
@@ -231,12 +231,14 @@ describe('newtab handlers', () => {
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
 
+    await new Promise((r) => setTimeout(r, 0));
+
     expect(permissionSpy.calls.length).toBe(1);
     expect(permissionSpy.calls[0][0]).toEqual({ permissions: ['search', 'history'] });
     expect(localStorage.getItem('showSearchBar')).toBe('true');
   });
 
-  test('does not request permission when search bar disabled', () => {
+  test('does not request permission when search bar disabled', async () => {
     const permissionSpy = createSpy(() => Promise.resolve(true));
     globalThis.chrome = {
       permissions: { request: permissionSpy }
@@ -247,11 +249,13 @@ describe('newtab handlers', () => {
     checkbox.checked = false;
     checkbox.dispatchEvent(new Event('change'));
 
+    await new Promise((r) => setTimeout(r, 0));
+
     expect(permissionSpy.calls.length).toBe(0);
     expect(localStorage.getItem('showSearchBar')).toBe('false');
   });
 
-  test('saves preference even if permission request fails', async () => {
+  test('reverts checkbox and shows hint when permission request fails', async () => {
     const permissionSpy = createSpy(() => Promise.reject(new Error('denied')));
     globalThis.chrome = {
       permissions: { request: permissionSpy }
@@ -264,10 +268,30 @@ describe('newtab handlers', () => {
 
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(localStorage.getItem('showSearchBar')).toBe('true');
+    expect(checkbox.checked).toBe(false);
+    expect(localStorage.getItem('showSearchBar')).toBeNull();
+    const hint = checkbox.closest('label').nextElementSibling;
+    expect(hint.classList.contains('permission-hint')).toBe(true);
   });
 
-  test('requests topSites permission when shortcuts enabled', () => {
+  test('reverts checkbox when permission request returns false', async () => {
+    const permissionSpy = createSpy(() => Promise.resolve(false));
+    globalThis.chrome = {
+      permissions: { request: permissionSpy }
+    };
+
+    popup.attachNewtabHandlers();
+    const checkbox = document.getElementById('showSearchBar');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(checkbox.checked).toBe(false);
+    expect(localStorage.getItem('showSearchBar')).toBeNull();
+  });
+
+  test('requests topSites permission when shortcuts enabled', async () => {
     const permissionSpy = createSpy(() => Promise.resolve(true));
     globalThis.chrome = {
       permissions: { request: permissionSpy }
@@ -278,12 +302,14 @@ describe('newtab handlers', () => {
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
 
+    await new Promise((r) => setTimeout(r, 0));
+
     expect(permissionSpy.calls.length).toBe(1);
     expect(permissionSpy.calls[0][0]).toEqual({ permissions: ['topSites'] });
     expect(localStorage.getItem('showShortcuts')).toBe('true');
   });
 
-  test('shortcuts toggle does not request permission when disabled', () => {
+  test('shortcuts toggle does not request permission when disabled', async () => {
     const permissionSpy = createSpy(() => Promise.resolve(true));
     globalThis.chrome = {
       permissions: { request: permissionSpy }
@@ -293,6 +319,8 @@ describe('newtab handlers', () => {
     const checkbox = document.getElementById('showShortcuts');
     checkbox.checked = false;
     checkbox.dispatchEvent(new Event('change'));
+
+    await new Promise((r) => setTimeout(r, 0));
 
     expect(permissionSpy.calls.length).toBe(0);
     expect(localStorage.getItem('showShortcuts')).toBe('false');
