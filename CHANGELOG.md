@@ -97,7 +97,7 @@
 - refactored core modules to be testable with full test suite (136 tests)
 - switched from npm to Bun
 - updated localization strings (EN + ES), minor typo and FAQ fixes
-- added github actions workflow for pushing to chrome web store using [cws-cli](https://github.com/null3000/cws-cli)
+- added github actions workflow for pushing to chrome web store using [cws-cli](https://github.com/VaughnBosu/cws-cli)
 
 # v2.2
 - redesigned onboarding into an interactive 4-step setup wizard

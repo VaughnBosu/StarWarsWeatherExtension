@@ -231,16 +231,16 @@
     "message": "Enjoying the extension? Rate it on the <a href=\"https://chrome.google.com/webstore/detail/star-wars-weather/hjphhbgleggdljkdlmlblbamlnkmdgag\" target=\"_blank\" rel=\"noopener\">Chrome Web Store</a>."
   },
   "popup_link_bug": {
-    "message": "Found a bug? Open an issue on <a href=\"https://github.com/null3000/StarWarsWeatherExtension/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>."
+    "message": "Found a bug? Open an issue on <a href=\"https://github.com/VaughnBosu/StarWarsWeatherExtension/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>."
   },
   "popup_link_source": {
-    "message": "Browse the <a href=\"https://github.com/null3000/StarWarsWeatherExtension\" target=\"_blank\" rel=\"noopener\">source code</a> or read the <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">FAQ</a>."
+    "message": "Browse the <a href=\"https://github.com/VaughnBosu/StarWarsWeatherExtension\" target=\"_blank\" rel=\"noopener\">source code</a> or read the <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">FAQ</a>."
   },
   "popup_link_author": {
-    "message": "Made by <a href=\"https://www.github.com/null3000\" target=\"_blank\" rel=\"noopener\">vwbosu</a>, inspired by <a href=\"https://www.tomscott.com/weather/starwars/\" target=\"_blank\" rel=\"noopener\">Tom Scott</a>."
+    "message": "Made by <a href=\"https://www.github.com/VaughnBosu\" target=\"_blank\" rel=\"noopener\">vwbosu</a>, inspired by <a href=\"https://www.tomscott.com/weather/starwars/\" target=\"_blank\" rel=\"noopener\">Tom Scott</a>."
   },
   "popup_link_survey": {
-    "message": "Take a quick <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">survey</a> or <a href=\"https://www.buymeacoffee.com/null3000\" target=\"_blank\" rel=\"noopener\">buy me a coffee</a>."
+    "message": "Take a quick <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">survey</a> or <a href=\"https://www.buymeacoffee.com/VaughnBosu\" target=\"_blank\" rel=\"noopener\">buy me a coffee</a>."
   },
   "onboarding_welcome_title": {
     "message": "Welcome to Star Wars Weather"

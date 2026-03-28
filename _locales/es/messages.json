@@ -54,7 +54,7 @@
     "message": "Hoth"
   },
   "planet_hoth_summary": {
-    "message": "$1, Es una $2 muy fría"
+    "message": "$1, $2 con mucho frío"
   },
   "planet_hoth_description": {
     "message": "Un mundo de nieve y hielo, rodeado de numerosas lunas y hogar de criaturas mortales como la wampa."
@@ -63,7 +63,7 @@
     "message": "Kamino"
   },
   "planet_kamino_summary": {
-    "message": "$1, Es una $2 lluviosa"
+    "message": "$1, $2 con lluvia"
   },
   "planet_kamino_description": {
     "message": "Un planeta de océanos infinitos, tormentas y clones"
@@ -72,16 +72,16 @@
     "message": "Endor"
   },
   "planet_endor_summary": {
-    "message": "$1, y una $2 nublada"
+    "message": "$1, $2 con niebla"
   },
   "planet_endor_description": {
-    "message": "La cecina de Ewok es un bocadillo popular en el Borde Exterior"
+    "message": "La cecina de Ewok es un snack popular en el Borde Exterior"
   },
   "planet_dagobah_name": {
     "message": "Dagobah"
   },
   "planet_dagobah_summary": {
-    "message": "$1, y una $2 muy húmeda"
+    "message": "$1, $2 con mucha humedad"
   },
   "planet_dagobah_description": {
     "message": "Refugio del maestro Yoda, lo es."
@@ -90,7 +90,7 @@
     "message": "Bespin"
   },
   "planet_bespin_summary": {
-    "message": "$1, y es una $2 muy ventosa"
+    "message": "$1, $2 con mucho viento"
   },
   "planet_bespin_description": {
     "message": "Famoso por la Ciudad Nube"
@@ -99,7 +99,7 @@
     "message": "Scarif"
   },
   "planet_scarif_summary": {
-    "message": "$1, Es una $2 tropical"
+    "message": "$1, $2 tropical"
   },
   "planet_scarif_description": {
     "message": "Un planeta tropical remoto en el Borde Exterior"
@@ -108,7 +108,7 @@
     "message": "Naboo"
   },
   "planet_naboo_summary": {
-    "message": "$1, Es una $2 fresca"
+    "message": "$1, $2 con algo de frío"
   },
   "planet_naboo_description": {
     "message": "Hogar de Jar-Jar Binks"
@@ -117,7 +117,7 @@
     "message": "Coruscant"
   },
   "planet_coruscant_summary": {
-    "message": "$1, Es una $2 fría"
+    "message": "$1, $2 con frío"
   },
   "planet_coruscant_description": {
     "message": "Capital de la galaxia"
@@ -126,7 +126,7 @@
     "message": "Tatooine"
   },
   "planet_tatooine_summary": {
-    "message": "$1, Es una $2 calurosa"
+    "message": "$1, $2 con calor"
   },
   "planet_tatooine_description": {
     "message": "Ve a Mos Eisley por una bebida"
@@ -135,7 +135,7 @@
     "message": "Mustafar"
   },
   "planet_mustafar_summary": {
-    "message": "$1, Es una $2 muy calurosa"
+    "message": "$1, $2 con mucho calor"
   },
   "planet_mustafar_description": {
     "message": "Hogar de Darth Vader"
@@ -231,19 +231,19 @@
     "message": "¿Te gusta la extensión? Califícala en la <a href=\"https://chrome.google.com/webstore/detail/star-wars-weather/hjphhbgleggdljkdlmlblbamlnkmdgag\" target=\"_blank\" rel=\"noopener\">Chrome Web Store</a>."
   },
   "popup_link_bug": {
-    "message": "¿Encontraste un error? Abre un issue en <a href=\"https://github.com/null3000/StarWarsWeatherExtension/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>."
+    "message": "¿Encontraste un error? Abre un issue en <a href=\"https://github.com/VaughnBosu/StarWarsWeatherExtension/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>."
   },
   "popup_link_source": {
-    "message": "Explora el <a href=\"https://github.com/null3000/StarWarsWeatherExtension\" target=\"_blank\" rel=\"noopener\">código fuente</a> o lee las <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a>."
+    "message": "Explora el <a href=\"https://github.com/VaughnBosu/StarWarsWeatherExtension\" target=\"_blank\" rel=\"noopener\">código fuente</a> o lee las <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a>."
   },
   "popup_link_author": {
-    "message": "Creada por <a href=\"https://www.github.com/null3000\" target=\"_blank\" rel=\"noopener\">vwbosu</a>, inspirada en <a href=\"https://www.tomscott.com/weather/starwars/\" target=\"_blank\" rel=\"noopener\">Tom Scott</a>."
+    "message": "Creada por <a href=\"https://www.github.com/VaughnBosu\" target=\"_blank\" rel=\"noopener\">vwbosu</a>, inspirada en <a href=\"https://www.tomscott.com/weather/starwars/\" target=\"_blank\" rel=\"noopener\">Tom Scott</a>."
   },
   "popup_link_survey": {
-    "message": "Completa una breve <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">encuesta</a> o <a href=\"https://www.buymeacoffee.com/null3000\" target=\"_blank\" rel=\"noopener\">invítame un café</a>."
+    "message": "Completa una breve <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">encuesta</a> o <a href=\"https://www.buymeacoffee.com/VaughnBosu\" target=\"_blank\" rel=\"noopener\">invítame a un café</a>."
   },
   "onboarding_welcome_title": {
-    "message": "Bienvenido a Star Wars Weather"
+    "message": "Te damos la bienvenida a Star Wars Weather"
   },
   "onboarding_welcome_subtitle": {
     "message": "Tu nueva pestaña mostrará el clima comparado con planetas de Star Wars. Vamos a configurar tu extensión."
