@@ -56,7 +56,7 @@ bun test  # Run tests with Bun's built-in test runner
 - `bun run dev` - Run with watch mode for development
 
 ### CI/CD
-Pushes to `main` automatically upload and publish the extension to the Chrome Web Store via a GitHub Actions workflow using [cws-cli](https://github.com/VaughnBosu/cws-cli).
+Pushes to `main` automatically upload and publish the extension to the Chrome Web Store via a GitHub Actions workflow using [cws-cli](https://github.com/vaughnbosu/cws-cli).
 
 ## Contributing
 Like the project? Please consider contributing to this project, lots of improvements and optimizations can be made.

@@ -20,7 +20,7 @@ jobs:
 
       - name: Install cws-cli
         run: |
-          curl -LO https://github.com/VaughnBosu/cws-cli/releases/latest/download/cws_linux_amd64.tar.gz
+          curl -LO https://github.com/vaughnbosu/cws-cli/releases/latest/download/cws_linux_amd64.tar.gz
           tar xzf cws_linux_amd64.tar.gz
           sudo mv cws /usr/local/bin/
 

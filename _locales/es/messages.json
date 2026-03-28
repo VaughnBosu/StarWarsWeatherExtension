@@ -231,16 +231,16 @@
     "message": "¿Te gusta la extensión? Califícala en la <a href=\"https://chrome.google.com/webstore/detail/star-wars-weather/hjphhbgleggdljkdlmlblbamlnkmdgag\" target=\"_blank\" rel=\"noopener\">Chrome Web Store</a>."
   },
   "popup_link_bug": {
-    "message": "¿Encontraste un error? Abre un issue en <a href=\"https://github.com/VaughnBosu/StarWarsWeatherExtension/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>."
+    "message": "¿Encontraste un error? Abre un issue en <a href=\"https://github.com/vaughnbosu/StarWarsWeatherExtension/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>."
   },
   "popup_link_source": {
-    "message": "Explora el <a href=\"https://github.com/VaughnBosu/StarWarsWeatherExtension\" target=\"_blank\" rel=\"noopener\">código fuente</a> o lee las <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a>."
+    "message": "Explora el <a href=\"https://github.com/vaughnbosu/StarWarsWeatherExtension\" target=\"_blank\" rel=\"noopener\">código fuente</a> o lee las <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a>."
   },
   "popup_link_author": {
-    "message": "Creada por <a href=\"https://www.github.com/VaughnBosu\" target=\"_blank\" rel=\"noopener\">vwbosu</a>, inspirada en <a href=\"https://www.tomscott.com/weather/starwars/\" target=\"_blank\" rel=\"noopener\">Tom Scott</a>."
+    "message": "Creada por <a href=\"https://www.github.com/vaughnbosu\" target=\"_blank\" rel=\"noopener\">vwbosu</a>, inspirada en <a href=\"https://www.tomscott.com/weather/starwars/\" target=\"_blank\" rel=\"noopener\">Tom Scott</a>."
   },
   "popup_link_survey": {
-    "message": "Completa una breve <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">encuesta</a> o <a href=\"https://www.buymeacoffee.com/VaughnBosu\" target=\"_blank\" rel=\"noopener\">invítame a un café</a>."
+    "message": "Completa una breve <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">encuesta</a> o <a href=\"https://www.buymeacoffee.com/vaughnbosu\" target=\"_blank\" rel=\"noopener\">invítame a un café</a>."
   },
   "onboarding_welcome_title": {
     "message": "Te damos la bienvenida a Star Wars Weather"
