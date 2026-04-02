@@ -3,16 +3,16 @@
     "message": "Star Wars Weather"
   },
   "extensionDescription": {
-    "message": "¡Abre una nueva pestaña con un fondo de Star Wars basado en el clima!"
+    "message": "Abre una nueva pestaña con un fondo de Star Wars según el clima."
   },
   "loading_weather": {
     "message": "Cargando el clima..."
   },
   "error_weather_unavailable": {
-    "message": "No se puede obtener el clima en este momento."
+    "message": "No se pudieron obtener los datos del clima en este momento."
   },
   "alert_geolocation_error": {
-    "message": "No se puede obtener tu ubicación. Activa los servicios de ubicación para esta extensión. Consulta las preguntas frecuentes para más información."
+    "message": "No se pudo obtener tu ubicación. Activa los servicios de ubicación para esta extensión. Consulta las preguntas frecuentes para más información."
   },
   "center_heading_prefix": {
     "message": "SE SIENTE COMO"
@@ -75,7 +75,7 @@
     "message": "$1, $2 con niebla"
   },
   "planet_endor_description": {
-    "message": "La cecina de Ewok es un snack popular en el Borde Exterior"
+    "message": "La cecina de ewok es un aperitivo popular en el Borde Exterior"
   },
   "planet_dagobah_name": {
     "message": "Dagobah"
@@ -102,7 +102,7 @@
     "message": "$1, $2 tropical"
   },
   "planet_scarif_description": {
-    "message": "Un planeta tropical remoto en el Borde Exterior"
+    "message": "Un planeta remoto y tropical del Borde Exterior"
   },
   "planet_naboo_name": {
     "message": "Naboo"
@@ -156,7 +156,7 @@
     "message": "Mostrar atajos"
   },
   "popup_show_extras_hyperspace": {
-    "message": "Mostrar barra y atajos durante el hiperespacio"
+    "message": "Mostrar la barra de búsqueda y los atajos durante el hiperespacio"
   },
   "popup_permission_denied_search": {
     "message": "Permiso requerido. Activa esta opción de nuevo para volver a solicitarlo."
@@ -168,7 +168,7 @@
     "message": "Star Wars Weather"
   },
   "popup_subtitle": {
-    "message": "Gracias por usar la extensión. Ajusta tus preferencias o explora más recursos."
+    "message": "Gracias por usar la extensión. Elige tus preferencias a continuación o explora más recursos."
   },
   "popup_units_title": {
     "message": "Unidades de temperatura"
@@ -186,7 +186,7 @@
     "message": "Idioma"
   },
   "popup_language_hint": {
-    "message": "Las traducciones pueden no ser perfectas."
+    "message": "Es posible que las traducciones no sean perfectas."
   },
   "language_english_label": {
     "message": "🇺🇸 Inglés"
@@ -195,13 +195,13 @@
     "message": "🇪🇸 Español"
   },
   "popup_links_title": {
-    "message": "Mantente conectado"
+    "message": "Más recursos"
   },
   "popup_manual_location_title": {
     "message": "Ubicación manual"
   },
   "popup_manual_location_hint": {
-    "message": "Si el acceso a la ubicación está bloqueado, busca una ciudad (p. ej., \"París\" o \"París, ES\") y elige un resultado."
+    "message": "Si el acceso a la ubicación está bloqueado, busca una ciudad (p. ej., \"París\" o \"París, FR\") y elige un resultado."
   },
   "popup_manual_location_placeholder": {
     "message": "Ciudad o Ciudad, País"
@@ -216,13 +216,13 @@
     "message": "Buscando..."
   },
   "popup_manual_location_no_results": {
-    "message": "No se encontraron ciudades coincidentes."
+    "message": "No se encontró ninguna ciudad que coincida."
   },
   "popup_manual_location_error": {
     "message": "No se pudieron obtener las ciudades. Inténtalo de nuevo."
   },
   "popup_manual_location_selected": {
-    "message": "Ubicación manual establecida en $1."
+    "message": "Ubicación manual establecida: $1."
   },
   "popup_manual_location_auto": {
     "message": "Usando la ubicación automática."
@@ -231,13 +231,13 @@
     "message": "¿Te gusta la extensión? Califícala en la <a href=\"https://chrome.google.com/webstore/detail/star-wars-weather/hjphhbgleggdljkdlmlblbamlnkmdgag\" target=\"_blank\" rel=\"noopener\">Chrome Web Store</a>."
   },
   "popup_link_bug": {
-    "message": "¿Encontraste un error? Abre un issue en <a href=\"https://github.com/vaughnbosu/StarWarsWeatherExtension/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>."
+    "message": "¿Encontraste un error? Abre una incidencia en <a href=\"https://github.com/vaughnbosu/StarWarsWeatherExtension/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>."
   },
   "popup_link_source": {
     "message": "Explora el <a href=\"https://github.com/vaughnbosu/StarWarsWeatherExtension\" target=\"_blank\" rel=\"noopener\">código fuente</a> o lee las <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a>."
   },
   "popup_link_author": {
-    "message": "Creada por <a href=\"https://www.github.com/vaughnbosu\" target=\"_blank\" rel=\"noopener\">vwbosu</a>, inspirada en <a href=\"https://www.tomscott.com/weather/starwars/\" target=\"_blank\" rel=\"noopener\">Tom Scott</a>."
+    "message": "Creado por <a href=\"https://www.github.com/vaughnbosu\" target=\"_blank\" rel=\"noopener\">vwbosu</a>, inspirado en <a href=\"https://www.tomscott.com/weather/starwars/\" target=\"_blank\" rel=\"noopener\">Tom Scott</a>."
   },
   "popup_link_survey": {
     "message": "Completa una breve <a href=\"https://forms.gle/NdQuhGarp7cKoZTp7\" target=\"_blank\" rel=\"noopener\">encuesta</a> o <a href=\"https://www.buymeacoffee.com/vaughnbosu\" target=\"_blank\" rel=\"noopener\">invítame a un café</a>."
@@ -246,7 +246,7 @@
     "message": "Te damos la bienvenida a Star Wars Weather"
   },
   "onboarding_welcome_subtitle": {
-    "message": "Tu nueva pestaña mostrará el clima comparado con planetas de Star Wars. Vamos a configurar tu extensión."
+    "message": "Tu nueva pestaña mostrará condiciones del clima asociadas a planetas de Star Wars. Vamos a configurar la extensión."
   },
   "onboarding_welcome_cta": {
     "message": "Comenzar"
@@ -255,7 +255,7 @@
     "message": "Idioma"
   },
   "onboarding_location_title": {
-    "message": "¿Cómo encontramos tu clima?"
+    "message": "¿Cómo quieres que encontremos tu clima?"
   },
   "onboarding_location_subtitle": {
     "message": "Elige cómo la extensión determina tu ubicación."
@@ -270,7 +270,7 @@
     "message": "Buscar una ciudad"
   },
   "onboarding_location_manual_hint": {
-    "message": "Escribe el nombre de una ciudad"
+    "message": "Escribe el nombre de una ciudad para establecer tu ubicación"
   },
   "onboarding_auto_detecting": {
     "message": "Detectando tu ubicación..."
@@ -285,7 +285,7 @@
     "message": "Intentar de nuevo"
   },
   "onboarding_auto_switch_manual": {
-    "message": "Elegir una ciudad"
+    "message": "Buscar una ciudad en su lugar"
   },
   "onboarding_troubleshoot_toggle": {
     "message": "Cómo activar los servicios de ubicación"
@@ -315,10 +315,10 @@
     "message": "Buscar"
   },
   "onboarding_manual_no_results": {
-    "message": "No se encontraron ciudades. Intenta otra búsqueda."
+    "message": "No se encontró ninguna ciudad que coincida. Prueba con otra búsqueda."
   },
   "onboarding_manual_error": {
-    "message": "No se pudo buscar ciudades. Inténtalo de nuevo."
+    "message": "No se pudieron buscar ciudades. Inténtalo de nuevo."
   },
   "onboarding_manual_searching": {
     "message": "Buscando..."
@@ -357,7 +357,7 @@
     "message": "¡Todo listo!"
   },
   "onboarding_done_subtitle": {
-    "message": "Abre una nueva pestaña para ver tu clima de Star Wars."
+    "message": "Abre una nueva pestaña para ver tu clima al estilo Star Wars."
   },
   "onboarding_done_location_auto": {
     "message": "Usando tu ubicación actual"
@@ -381,7 +381,7 @@
     "message": "Atajos: Desactivados"
   },
   "onboarding_done_hint": {
-    "message": "Puedes cambiar esto en cualquier momento desde los ajustes de la extensión."
+    "message": "Puedes cambiar estos ajustes en cualquier momento desde la configuración de la extensión."
   },
   "onboarding_done_cta": {
     "message": "Abrir nueva pestaña"
@@ -393,6 +393,6 @@
     "message": "¿No ves la barra de marcadores? Presiona Ctrl+Shift+B (Cmd+Shift+B en Mac) para mostrarla. <a href=\"./FAQ.html#bookmarks\" target=\"_blank\" rel=\"noopener\">Más información</a>"
   },
   "onboarding_done_faq_link": {
-    "message": "¿Tienes preguntas? Consulta las <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a> para más información."
+    "message": "¿Tienes preguntas? Consulta las <a href=\"./FAQ.html\" target=\"_blank\" rel=\"noopener\">preguntas frecuentes</a> para obtener consejos sobre el pie de página de Chrome, las actualizaciones del clima y mucho más."
   }
 }

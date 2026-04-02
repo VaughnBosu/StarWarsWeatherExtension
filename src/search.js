@@ -1,5 +1,6 @@
 import { getFaviconUrl } from './newtab.js';
 import { SUGGESTION_LIMIT, DEBOUNCE_MS } from './config.js';
+import { Moderok } from './vendor/moderok.js';
 
 const SHOULD_INIT = !(typeof globalThis !== 'undefined' && globalThis.__SWW_SKIP_INIT__ === true);
 
@@ -176,6 +177,8 @@ export function handleSearchSubmit(event, { searchInput, selectedUrl }) {
 
   const query = searchInput.value.trim();
   if (!query) return;
+
+  Moderok.track('search_performed');
 
   if (looksLikeUrl(query)) {
     window.location.href = normalizeUrl(query);

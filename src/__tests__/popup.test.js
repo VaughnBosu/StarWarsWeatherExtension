@@ -15,6 +15,35 @@ globalThis.__SWW_SKIP_INIT__ = true;
 
 let popup = null;
 
+const POPUP_LOCALE_MESSAGES = Object.freeze({
+  popup_title: { message: 'Star Wars Weather' },
+  popup_link_rate: { message: '<strong>Rate</strong>' },
+  popup_manual_location_placeholder: { message: 'City or City, Country' },
+  popup_manual_location_searching: { message: 'Searching...' },
+  popup_manual_location_no_results: { message: 'No matching cities found.' },
+  popup_manual_location_error: { message: 'Could not retrieve cities. Please try again.' },
+  popup_manual_location_selected: { message: 'Manual location set to $1.' },
+  popup_manual_location_auto: { message: 'Using automatic location.' },
+  popup_permission_denied_search: { message: 'Permission required. Toggle this on again to re-request.' },
+  popup_permission_denied_shortcuts: { message: 'Permission required. Toggle this on again to re-request.' }
+});
+
+function createPopupLocalization(overrides = {}) {
+  return createLocalizationMock({
+    ...POPUP_LOCALE_MESSAGES,
+    ...overrides
+  });
+}
+
+function createPopupLocaleResponse(overrides = {}) {
+  return {
+    json: {
+      ...POPUP_LOCALE_MESSAGES,
+      ...overrides
+    }
+  };
+}
+
 const realFetch = globalThis.fetch;
 const realBrowser = globalThis.browser;
 const realChrome = globalThis.chrome;
@@ -87,9 +116,7 @@ afterEach(() => {
 
 describe('popup translations', () => {
   test('applyTranslations fills text, html, and placeholders', () => {
-    const localization = createLocalizationMock({
-      popup_title: { message: 'Star Wars Weather' },
-      popup_link_rate: { message: '<strong>Rate</strong>' },
+    const localization = createPopupLocalization({
       popup_manual_location_placeholder: { message: 'City' }
     });
 
@@ -104,14 +131,10 @@ describe('popup translations', () => {
     popup.renderManualLocationMessage('auto');
 
     globalThis.fetch = createFetchMock([
-      {
-        json: {
-          popup_title: { message: 'Star Wars Weather' },
-          popup_link_rate: { message: '<strong>Rate</strong>' },
-          popup_manual_location_placeholder: { message: 'City' },
-          popup_manual_location_auto: { message: 'Auto mode' }
-        }
-      }
+      createPopupLocaleResponse({
+        popup_manual_location_placeholder: { message: 'City' },
+        popup_manual_location_auto: { message: 'Auto mode' }
+      })
     ]);
 
     await popup.refreshLocalization('en');
@@ -135,7 +158,9 @@ describe('popup handlers', () => {
 
   test('attachLanguageHandlers stores language and refreshes localization', async () => {
     globalThis.fetch = createFetchMock([
-      { json: { popup_title: { message: 'Titulo' } } }
+      createPopupLocaleResponse({
+        popup_title: { message: 'Titulo' }
+      })
     ]);
 
     const spanishRadio = document.querySelector('input[name="lang"][value="Spanish"]');

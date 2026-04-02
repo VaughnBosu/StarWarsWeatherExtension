@@ -69,9 +69,23 @@ describe('getInitial', () => {
 });
 
 describe('renderShortcuts', () => {
+  test('calculates visible shortcut count from row width', () => {
+    const container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', {
+      configurable: true,
+      value: 560
+    });
+
+    expect(newtab.getVisibleShortcutCount(container)).toBe(7);
+  });
+
   test('renders tiles into container', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
+    Object.defineProperty(container, 'clientWidth', {
+      configurable: true,
+      value: 560
+    });
 
     const sites = [
       { title: 'GitHub', url: 'https://github.com' },
@@ -85,9 +99,13 @@ describe('renderShortcuts', () => {
     expect(tiles[0].querySelector('.shortcut-label').textContent).toBe('GitHub');
   });
 
-  test('limits to 8 shortcuts', () => {
+  test('limits shortcuts to the number that fits in one row', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
+    Object.defineProperty(container, 'clientWidth', {
+      configurable: true,
+      value: 560
+    });
 
     const sites = Array.from({ length: 12 }, (_, i) => ({
       title: `Site ${i}`,
@@ -95,12 +113,41 @@ describe('renderShortcuts', () => {
     }));
 
     newtab.renderShortcuts(sites, container);
-    expect(container.querySelectorAll('.shortcut-tile').length).toBe(8);
+    expect(container.querySelectorAll('.shortcut-tile').length).toBe(7);
+  });
+
+  test('re-renders to a smaller count when available width shrinks', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    let width = 560;
+    Object.defineProperty(container, 'clientWidth', {
+      configurable: true,
+      get() {
+        return width;
+      }
+    });
+
+    const sites = Array.from({ length: 12 }, (_, i) => ({
+      title: `Site ${i}`,
+      url: `https://site${i}.com`
+    }));
+
+    newtab.renderShortcuts(sites, container);
+    expect(container.querySelectorAll('.shortcut-tile').length).toBe(7);
+
+    width = 320;
+    newtab.renderShortcuts(sites, container);
+    expect(container.querySelectorAll('.shortcut-tile').length).toBe(4);
   });
 
   test('skips sites without url', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
+    Object.defineProperty(container, 'clientWidth', {
+      configurable: true,
+      value: 560
+    });
 
     newtab.renderShortcuts([{ title: 'No URL' }, { title: 'Has URL', url: 'https://x.com' }], container);
     expect(container.querySelectorAll('.shortcut-tile').length).toBe(1);

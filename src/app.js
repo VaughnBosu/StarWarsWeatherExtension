@@ -14,6 +14,7 @@ import { loadLocalization } from './i18n.js';
 import { stateToAbbreviation } from './geo.js';
 import { PLANET_RULES, DEFAULT_PLANET_RULE } from './planets.js';
 import { WEATHER_ENDPOINT, GEOCODING_REVERSE_ENDPOINT, GEOLOCATION_OPTIONS, DEGREE_SYMBOL } from './config.js';
+import { Moderok } from './vendor/moderok.js';
 
 const DEBUG = true;
 const DEBUG_FORCE_PLANET_ID = null; // Set to null to disable
@@ -52,10 +53,12 @@ async function refreshWeather() {
   const language = localization.language;
 
   debug('Initialising extension', { preferredLanguage, resolvedLanguage: language, unit, manualLocation, locationKey });
+  Moderok.track('new_tab_opened');
 
   const cached = readWeatherCache({ language, unit, locationKey });
   if (cached) {
     debug('Using cached weather data', cached);
+    Moderok.track('cache_hit');
     applyWeatherToUi(cached, localization);
     return;
   }
@@ -81,8 +84,10 @@ async function refreshWeather() {
       applyWeatherToUi(viewModel, localization);
       writeWeatherCache(viewModel);
       clearGeolocationAlerted();
+      Moderok.track('weather_loaded', { planet: viewModel.planetName, timeOfDay: viewModel.timeOfDay });
     } catch (error) {
       console.error('Unable to refresh weather data for manual location', error);
+      Moderok.track('weather_error', { errorType: 'manual_fetch' });
       showErrorState(localization, manualLocation.displayName || manualLocation.name || null);
     }
 
@@ -118,8 +123,10 @@ async function refreshWeather() {
     applyWeatherToUi(viewModel, localization);
     writeWeatherCache(viewModel);
     clearGeolocationAlerted();
+    Moderok.track('weather_loaded', { planet: viewModel.planetName, timeOfDay: viewModel.timeOfDay });
   } catch (error) {
     console.error('Unable to refresh weather data', error);
+    Moderok.track('weather_error', { errorType: 'auto_fetch' });
     showErrorState(localization);
   }
 }
@@ -239,6 +246,7 @@ async function resolveLocation(localization) {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, async (error) => {
       debug('Geolocation error', error);
+      Moderok.track('geolocation_error', { errorCode: String(error.code || 'unknown') });
       if (!hasShownGeolocationError() && !isOnboardingComplete()) {
         alert(errorMessage);
         markGeolocationAlerted();

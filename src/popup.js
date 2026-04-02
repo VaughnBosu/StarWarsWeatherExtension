@@ -16,6 +16,7 @@ import {
 import { loadLocalization, invalidateLocalizationCache } from './i18n.js';
 import { stateToAbbreviation } from './geo.js';
 import { GEOCODING_DIRECT_ENDPOINT, GEOCODING_RESULT_LIMIT } from './config.js';
+import { Moderok } from './vendor/moderok.js';
 
 let currentLocalization = null;
 let manualLocationStatus = null;
@@ -41,6 +42,7 @@ function attachUnitHandlers() {
       const value = event.target.value === 'celsius' ? 'celsius' : 'fahrenheit';
       setPreferredUnit(value);
       clearWeatherCache();
+      Moderok.track('unit_changed', { unit: value });
     });
   });
 }
@@ -53,6 +55,7 @@ function attachLanguageHandlers() {
       const language = selected.startsWith('spanish') || selected === 'español' ? 'es' : 'en';
       setPreferredLanguage(language);
       clearWeatherCache();
+      Moderok.track('language_changed', { language });
       invalidateLocalizationCache(language);
       await refreshLocalization(language);
     });
@@ -148,6 +151,7 @@ function attachNewtabHandlers() {
         }
       }
       setShowSearchBar(event.target.checked);
+      Moderok.track('search_bar_toggled', { enabled: event.target.checked });
       syncHyperspaceCheckboxUi(getShowSearchBar() || getShowShortcuts());
     });
   }
@@ -170,6 +174,7 @@ function attachNewtabHandlers() {
         }
       }
       setShowShortcuts(event.target.checked);
+      Moderok.track('shortcuts_toggled', { enabled: event.target.checked });
       syncHyperspaceCheckboxUi(getShowSearchBar() || getShowShortcuts());
     });
   }
@@ -254,6 +259,7 @@ async function handleManualLocationSearch(input) {
 function handleManualLocationClear() {
   setManualLocation(null);
   clearWeatherCache();
+  Moderok.track('manual_location_cleared');
   populateManualLocationInput();
   renderManualLocationMessage('auto');
 }
@@ -331,6 +337,7 @@ function renderManualLocationOptions(results) {
         displayName
       });
       clearWeatherCache();
+      Moderok.track('manual_location_set', { country: result.country || 'unknown' });
       populateManualLocationInput();
       renderManualLocationMessage('selected', displayName);
     });

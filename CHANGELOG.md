@@ -107,3 +107,9 @@
 - location troubleshooting guide built into onboarding
 - fixed permission handling race condition
 - FAQ improvements and deep linking
+
+# v2.2.1
+- fixed new-tab shortcuts so they only render as many tiles as fit in a single row under the search bar
+- improved new-tab search/shortcuts layout responsiveness
+- reviewed and refined Spanish translations across weather, popup, and onboarding copy
+- added Moderok analytics tracking

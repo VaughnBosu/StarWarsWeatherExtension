@@ -13,6 +13,9 @@ export const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 export const DEGREE_SYMBOL = '\u00B0';
 
 export const MAX_SHORTCUTS = 8;
+export const SHORTCUT_ROW_MAX_WIDTH = 560;
+export const SHORTCUT_TILE_WIDTH = 64;
+export const SHORTCUT_GAP = 16;
 export const FAVICON_SIZE = 32;
 
 export const SUGGESTION_LIMIT = 5;

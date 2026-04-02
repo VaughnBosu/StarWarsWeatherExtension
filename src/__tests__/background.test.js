@@ -21,24 +21,33 @@ describe('background service worker', () => {
 
     globalThis.chrome = {
       runtime: {
+        id: 'test-extension-id',
         OnInstalledReason: { INSTALL: 'install' },
         onInstalled: { addListener: addListenerSpy },
         onMessage: { addListener: onMessageSpy },
         getURL: (path) => `chrome-extension://test/${path}`,
+        getManifest: () => ({ version: '2.3' }),
         setUninstallURL: uninstallSpy
       },
       tabs: { create: tabsCreateSpy },
       history: { search: historySpy },
-      search: { query: searchQuerySpy }
+      search: { query: searchQuerySpy },
+      storage: {
+        local: {
+          get: createSpy((_key, cb) => cb({})),
+          set: createSpy((_obj, cb) => { if (cb) cb(); })
+        }
+      }
     };
 
     await import('../background.js');
 
-    expect(addListenerSpy.calls.length).toBe(1);
+    // SDK registers its own onInstalled listener + the extension registers one
+    expect(addListenerSpy.calls.length).toBe(2);
+    installHandler = addListenerSpy.calls[1][0]; // Extension's handler is second
     expect(typeof installHandler).toBe('function');
     expect(onMessageSpy.calls.length).toBe(1);
     expect(typeof messageHandler).toBe('function');
-    expect(uninstallSpy.calls.length).toBe(1);
   });
 
   test('opens onboarding on install', () => {

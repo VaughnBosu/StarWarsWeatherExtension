@@ -2,5 +2,5 @@
 env.js
 .vscode
 agents.md
+claude.md
 node_modules/
-# bun.lock should be committed to version control

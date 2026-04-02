@@ -1,6 +1,13 @@
 import { getPreferredLanguage, getShowSearchBar, getShowShortcuts, getShowExtrasInHyperspace, STORAGE_KEYS } from './storage.js';
 import { loadLocalization } from './i18n.js';
-import { MAX_SHORTCUTS, FAVICON_SIZE } from './config.js';
+import {
+  FAVICON_SIZE,
+  MAX_SHORTCUTS,
+  SHORTCUT_GAP,
+  SHORTCUT_ROW_MAX_WIDTH,
+  SHORTCUT_TILE_WIDTH
+} from './config.js';
+import { Moderok } from './vendor/moderok.js';
 
 const SHOULD_INIT = !(typeof globalThis !== 'undefined' && globalThis.__SWW_SKIP_INIT__ === true);
 
@@ -41,13 +48,30 @@ export function getInitial(site) {
   }
 }
 
+export function getVisibleShortcutCount(container) {
+  if (!container) {
+    return MAX_SHORTCUTS;
+  }
+
+  const measuredWidth = [
+    container.getBoundingClientRect?.().width,
+    container.clientWidth,
+    container.parentElement?.getBoundingClientRect?.().width,
+    container.parentElement?.clientWidth,
+  ].find((value) => Number.isFinite(value) && value > 0);
+
+  const availableWidth = Math.min(measuredWidth ?? SHORTCUT_ROW_MAX_WIDTH, SHORTCUT_ROW_MAX_WIDTH);
+  const count = Math.floor((availableWidth + SHORTCUT_GAP) / (SHORTCUT_TILE_WIDTH + SHORTCUT_GAP));
+  return Math.max(0, Math.min(MAX_SHORTCUTS, count));
+}
+
 export function renderShortcuts(sites, container) {
   if (!container || !Array.isArray(sites)) {
     return;
   }
 
   container.innerHTML = '';
-  const limited = sites.slice(0, MAX_SHORTCUTS);
+  const limited = sites.slice(0, getVisibleShortcutCount(container));
 
   for (const site of limited) {
     if (!site.url) continue;
@@ -85,6 +109,7 @@ export function renderShortcuts(sites, container) {
     label.className = 'shortcut-label';
     label.textContent = getShortcutLabel(site);
 
+    tile.addEventListener('click', () => Moderok.track('shortcut_clicked'));
     tile.appendChild(iconWrapper);
     tile.appendChild(label);
     container.appendChild(tile);
@@ -173,12 +198,40 @@ if (SHOULD_INIT) {
     applyHyperspaceHidden(newtabExtras, background);
     applySearchPlaceholder(searchInput, localization);
 
+    let shortcutSites = [];
+
+    function renderCurrentShortcuts() {
+      if (!shortcutsGrid) {
+        return;
+      }
+
+      renderShortcuts(shortcutSites, shortcutsGrid);
+    }
+
+    let resizeTimer = null;
+    function scheduleShortcutsRender() {
+      if (resizeTimer !== null) {
+        clearTimeout(resizeTimer);
+      }
+
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = null;
+        renderCurrentShortcuts();
+      }, 50);
+    }
+
     if (showShortcuts) {
-      const sites = await getTopSites();
-      renderShortcuts(sites, shortcutsGrid);
+      shortcutSites = await getTopSites();
+      renderCurrentShortcuts();
     }
 
     let shortcutsLoaded = showShortcuts;
+
+    window.addEventListener('resize', () => {
+      if (getShowShortcuts()) {
+        scheduleShortcutsRender();
+      }
+    });
 
     window.addEventListener('storage', async (event) => {
       if (event.key === STORAGE_KEYS.showSearchBar || event.key === STORAGE_KEYS.showShortcuts) {
@@ -187,9 +240,11 @@ if (SHOULD_INIT) {
         applyVisibility({ searchForm, shortcutsGrid, newtabExtras, showSearch: updatedShowSearch, showShortcuts: updatedShowShortcuts });
 
         if (updatedShowShortcuts && !shortcutsLoaded) {
-          const sites = await getTopSites();
-          renderShortcuts(sites, shortcutsGrid);
+          shortcutSites = await getTopSites();
+          renderCurrentShortcuts();
           shortcutsLoaded = true;
+        } else if (updatedShowShortcuts) {
+          renderCurrentShortcuts();
         }
       }
 

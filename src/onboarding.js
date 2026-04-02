@@ -21,6 +21,7 @@ import {
   GEOCODING_RESULT_LIMIT,
   GEOLOCATION_OPTIONS
 } from './config.js';
+import { Moderok } from './vendor/moderok.js';
 
 let currentLocalization = null;
 let locationMode = null; // 'auto' or 'manual'
@@ -162,6 +163,7 @@ function attachEventListeners() {
     radio.addEventListener('change', (e) => {
       setPreferredUnit(e.target.value);
       clearWeatherCache();
+      Moderok.track('unit_changed', { unit: e.target.value });
     });
   });
 
@@ -182,6 +184,7 @@ function attachEventListeners() {
   if (prefsNext) {
     prefsNext.addEventListener('click', () => {
       markOnboardingComplete();
+      Moderok.track('onboarding_completed');
       renderSummary();
       showStep(4);
     });
@@ -202,6 +205,7 @@ function attachEventListeners() {
 
 async function handleLanguageChange(lang) {
   setPreferredLanguage(lang);
+  Moderok.track('language_changed', { language: lang });
   invalidateLocalizationCache(lang);
   currentLocalization = await loadLocalization(lang);
   applyTranslations(currentLocalization);
@@ -516,6 +520,7 @@ async function handleSearchBarToggle(checkbox) {
     }
   }
   setShowSearchBar(checkbox.checked);
+  Moderok.track('search_bar_toggled', { enabled: checkbox.checked });
 }
 
 async function handleShortcutsToggle(checkbox) {
@@ -536,6 +541,7 @@ async function handleShortcutsToggle(checkbox) {
     }
   }
   setShowShortcuts(checkbox.checked);
+  Moderok.track('shortcuts_toggled', { enabled: checkbox.checked });
 }
 
 function showPermissionHint(checkbox) {
