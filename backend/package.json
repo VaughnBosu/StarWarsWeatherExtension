@@ -1,0 +1,17 @@
+{
+  "name": "star-wars-weather-backend",
+  "private": true,
+  "version": "2.5.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-secrets-manager": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0"
+  },
+  "scripts": {
+    "test": "bun test tests"
+  }
+}

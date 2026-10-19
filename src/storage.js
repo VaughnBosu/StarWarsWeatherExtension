@@ -13,7 +13,8 @@ const STORAGE_KEYS = Object.freeze({
   visitedPlanets: 'sww.visitedPlanets',
   geocodeCache: 'sww.geocodeCache',
   geocodeQueryCache: 'sww.geocodeQueryCache',
-  telemetry: 'sww.telemetry'
+  telemetry: 'sww.telemetry',
+  backendRetryAt: 'sww.backendRetryAt'
 });
 
 const LEGACY_CACHE_KEYS = Object.freeze([
@@ -33,6 +34,7 @@ import {
   GEOCODE_QUERY_CACHE_MAX_ENTRIES,
   GEOCODING_RESULT_LIMIT
 } from './config.js';
+import { roundCoordinate } from './coordinates.js';
 
 // re-exported so callers read the cap off the store that applies it
 export { GEOCODE_QUERY_CACHE_MAX_ENTRIES };
@@ -78,7 +80,9 @@ export function readWeatherCache({ language, unit, locationKey } = {}) {
 
   try {
     const parsed = JSON.parse(raw);
-    if (!isWithinTtl(parsed.lastUpdated)) {
+    // `lastUpdated` is the provider observation time (it can lag by an hour or more
+    // when the backend serves stale data); the local TTL counts from the write.
+    if (!isWithinTtl(parsed.cachedAt ?? parsed.lastUpdated)) {
       clearWeatherCache();
       return null;
     }
@@ -110,7 +114,8 @@ export function readWeatherCache({ language, unit, locationKey } = {}) {
       }
     }
 
-    return parsed;
+    // Pre-2.5 records have no cachedAt; their lastUpdated was the fetch time.
+    return parsed.cachedAt ? parsed : { ...parsed, cachedAt: parsed.lastUpdated };
   } catch (error) {
     console.warn('Failed to parse cached weather payload', error);
     clearWeatherCache();
@@ -123,10 +128,14 @@ export function writeWeatherCache(payload) {
     throw new Error('Weather cache payload must be an object');
   }
 
+  const now = new Date().toISOString();
   const record = {
     ...payload,
     locationKey: payload.locationKey ?? 'auto',
-    lastUpdated: payload.lastUpdated ?? new Date().toISOString()
+    lastUpdated: payload.lastUpdated ?? now,
+    // Re-persisting a cached reading (location metadata, unit toggle) keeps its
+    // original fetch time, or the TTL would never expire and nothing would refetch.
+    cachedAt: payload.cachedAt ?? now
   };
 
   localStorage.setItem(STORAGE_KEYS.cache, JSON.stringify(record));
@@ -146,7 +155,7 @@ export function buildGeocodeCacheKey(latitude, longitude) {
     return null;
   }
 
-  const rounded = (value) => Number(value.toFixed(GEOCODE_CACHE_PRECISION));
+  const rounded = (value) => roundCoordinate(value, GEOCODE_CACHE_PRECISION);
   return `${rounded(lat)},${rounded(lon)}`;
 }
 
@@ -234,19 +243,22 @@ export function clearGeocodeCache() {
   safeRemoveItem(STORAGE_KEYS.geocodeCache);
 }
 
-/** Matches (and slightly widens) the trim+lowercase popup.js and onboarding.js already do. */
+/**
+ * Folds the query the same way backend-client.js normalizeLocationQuery does before
+ * sending it, so identical backend requests share one local cache entry.
+ */
 export function buildGeocodeQueryKey(query) {
   if (typeof query !== 'string') {
     return null;
   }
 
-  const key = query.trim().replace(/\s+/g, ' ').toLowerCase();
+  const key = query.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
   return key || null;
 }
 
 /**
- * OWM /geo results carry a `local_names` map of a few hundred translations each;
- * storing them verbatim costs tens of kilobytes per search for data nothing renders.
+ * Provider results can carry a `local_names` map of hundreds of translations;
+ * storing it verbatim costs tens of kilobytes per search for data nothing renders.
  */
 function normalizeGeocodeQueryResults(results) {
   if (!Array.isArray(results)) {
@@ -346,6 +358,21 @@ export function writeGeocodeQueryCache(query, results) {
 
 export function clearGeocodeQueryCache() {
   safeRemoveItem(STORAGE_KEYS.geocodeQueryCache);
+}
+
+/** Epoch milliseconds before which new tabs should not call the backend, or null. */
+export function readBackendRetryAt() {
+  const raw = localStorage.getItem(STORAGE_KEYS.backendRetryAt);
+  const value = raw === null ? Number.NaN : Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function writeBackendRetryAt(epochMs) {
+  localStorage.setItem(STORAGE_KEYS.backendRetryAt, String(Math.round(epochMs)));
+}
+
+export function clearBackendRetryAt() {
+  safeRemoveItem(STORAGE_KEYS.backendRetryAt);
 }
 
 /** Offline/stale fallback. Unlike the TTL cache, never expired by age. */

@@ -1,0 +1,62 @@
+[
+  {
+    "Id": "backend",
+    "Label": "BackendRequest",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "BackendRequest", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "fresh",
+    "Label": "CacheFreshHit",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "CacheFreshHit", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "stale",
+    "Label": "CacheStaleServed",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "CacheStaleServed", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "attempts",
+    "Label": "UpstreamAttempt",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "UpstreamAttempt", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "success",
+    "Label": "UpstreamSuccess",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "UpstreamSuccess", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "provider429",
+    "Label": "UpstreamResponse429",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "UpstreamResponse429", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "authDenied",
+    "Label": "UpstreamAuthDenied",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "UpstreamAuthDenied", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "provider5xx",
+    "Label": "UpstreamResponse5xx",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "UpstreamResponse5xx", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "timeouts",
+    "Label": "UpstreamTimeout",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "UpstreamTimeout", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  },
+  {
+    "Id": "budgetRefused",
+    "Label": "ProviderBudgetRefused",
+    "MetricStat": {"Metric": {"Namespace": "StarWarsWeather/Backend", "MetricName": "ProviderBudgetRefused", "Dimensions": [{"Name": "Service", "Value": "WeatherApi"}]}, "Period": 300, "Stat": "Sum"},
+    "ReturnData": true
+  }
+]

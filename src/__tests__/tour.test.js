@@ -2,9 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:te
 import { installDom, installStorageMock, teardownDom } from './testUtils.js';
 import {
   cyclePlanetIndex,
-  getOptionsPageUrl,
   getPlanetBackgroundClass,
-  getTourPageUrl,
   getTourPlanet,
   isPlanetVisited,
   openSettingsPage,
@@ -64,18 +62,6 @@ describe('tour helpers', () => {
     expect(getTourPlanet(0).id).toBe(PLANET_RULES[0].id);
     expect(getTourPlanet(PLANET_RULES.length).id).toBe(PLANET_RULES[0].id);
     expect(getTourPlanet(-1).id).toBe(PLANET_RULES[PLANET_RULES.length - 1].id);
-  });
-
-  test('getTourPageUrl uses runtime getURL', () => {
-    globalThis.browser = {
-      runtime: {
-        getURL: (path) => `chrome-extension://test/${path}`
-      }
-    };
-    delete globalThis.chrome;
-
-    expect(getTourPageUrl()).toBe(`chrome-extension://test/${TOUR_PAGE_PATH}`);
-    expect(getOptionsPageUrl()).toBe('chrome-extension://test/public/options.html');
   });
 
   test('isPlanetVisited checks visited list', () => {

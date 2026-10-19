@@ -3,39 +3,84 @@ name: Upload to Chrome Web Store
 on:
   push:
     branches: [main]
+    # These paths do not change the extension package.
+    paths-ignore:
+      - 'backend/**'
+      - 'src/__tests__/**'
+      - '**/*.md'
+
+permissions:
+  contents: read
 
 jobs:
   upload:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Actions pinned by commit: this job later holds the store credentials.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.7
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Create env.js
+      # `bun test` also runs backend/tests, which need the backend dependencies.
+      - name: Install backend test dependencies
+        run: bun install --cwd backend --frozen-lockfile
+
+      # Empty analytics key so test runs send no events.
+      - name: Create test env.js
         env:
-          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-          MODEROK_APP_KEY: ${{ secrets.MODEROK_APP_KEY }}
+          # The stack's ApiBaseUrl output. No fallback: a missing value fails the build.
+          BACKEND_BASE_URL: ${{ vars.BACKEND_BASE_URL }}
         run: |
+          test -n "${BACKEND_BASE_URL}" || { echo "BACKEND_BASE_URL repository variable is required"; exit 1; }
           cat > src/env.js <<EOF
           // Generated during packaging. Do not commit this file.
-          const API_KEY = "${OPENWEATHER_API_KEY}";
-          const MODEROK_APP_KEY = "${MODEROK_APP_KEY}";
-          globalThis.API_KEY = API_KEY;
+          const BACKEND_BASE_URL = "${BACKEND_BASE_URL}";
+          const MODEROK_APP_KEY = "";
+          globalThis.BACKEND_BASE_URL = BACKEND_BASE_URL;
           globalThis.MODEROK_APP_KEY = MODEROK_APP_KEY;
-          export { API_KEY, MODEROK_APP_KEY };
+          export { BACKEND_BASE_URL, MODEROK_APP_KEY };
           EOF
 
       # after env.js: background.js imports it, so the tests need it on disk
       - name: Run tests
         run: bun test
 
-      - name: Install cws-cli
+      - name: Create release env.js
+        env:
+          BACKEND_BASE_URL: ${{ vars.BACKEND_BASE_URL }}
+          MODEROK_APP_KEY: ${{ secrets.MODEROK_APP_KEY }}
         run: |
-          curl -LO https://github.com/vaughnbosu/cws-cli/releases/latest/download/cws_linux_amd64.tar.gz
+          cat > src/env.js <<EOF
+          // Generated during packaging. Do not commit this file.
+          const BACKEND_BASE_URL = "${BACKEND_BASE_URL}";
+          const MODEROK_APP_KEY = "${MODEROK_APP_KEY}";
+          globalThis.BACKEND_BASE_URL = BACKEND_BASE_URL;
+          globalThis.MODEROK_APP_KEY = MODEROK_APP_KEY;
+          export { BACKEND_BASE_URL, MODEROK_APP_KEY };
+          EOF
+
+      - name: Build extension package
+        run: |
+          mkdir -p dist
+          cp manifest.json dist/
+          cp -R _locales dist/
+          rsync -a --exclude '.DS_Store' public dist/
+          mkdir -p dist/src
+          rsync -a --exclude '__tests__' --exclude 'env.example.js' src/ dist/src/
+
+      # Pinned release and digest: this binary runs next to the store credentials.
+      - name: Install cws-cli
+        env:
+          CWS_CLI_VERSION: v1.3.1
+          CWS_CLI_SHA256: 51ffd377293457b506eae5f6db33cd2bc999fb4cbebdad6bfbe88fda09983310
+        run: |
+          curl -fsSLO "https://github.com/vaughnbosu/cws-cli/releases/download/${CWS_CLI_VERSION}/cws_linux_amd64.tar.gz"
+          echo "${CWS_CLI_SHA256}  cws_linux_amd64.tar.gz" | sha256sum --check --strict
           tar xzf cws_linux_amd64.tar.gz
           sudo mv cws /usr/local/bin/
 
@@ -46,5 +91,5 @@ jobs:
           CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: |
-          cws upload . -e ${{ vars.EXTENSION_ID }}
+          cws upload dist -e ${{ vars.EXTENSION_ID }}
           cws publish --staged -e ${{ vars.EXTENSION_ID }}

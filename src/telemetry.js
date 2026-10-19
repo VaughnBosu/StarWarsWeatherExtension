@@ -16,8 +16,8 @@
  * record and localStorage has no compare-and-swap, so a rollup can be sent twice.
  * Duplicates carry the same (userId, date, sequence, partial) and ingest MUST dedup on
  * that tuple. Failing this direction is deliberate: a duplicate is droppable, while a
- * destroyed slice leaves nothing behind and the OWM quota projection reads it as a
- * quiet day.
+ * destroyed slice leaves nothing behind and the historical request projection reads
+ * it as a quiet day. Provider usage is measured by backend metrics.
  */
 import { Moderok, utcDateStamp } from './vendor/moderok.js';
 import {
@@ -308,7 +308,7 @@ function settleSlice(slice) {
 /**
  * Ship what today has accumulated and start a fresh delta. Called on page hide, because
  * a rollup that only leaves on the next day's first render never leaves at all for a
- * churned user, dropping their last active day from the OWM quota projection.
+ * churned user, dropping their last active day from the historical request projection.
  *
  * `flushedAt` spaces rollups PARTIAL_FLUSH_INTERVAL_MS apart and `flushAttempts` caps
  * the day at MAX_PARTIAL_FLUSHES, so at most MAX_PARTIAL_FLUSHES + 1 per user per day.
@@ -433,14 +433,14 @@ export function recordTabOutcome(outcome, { planetId, planet, timeOfDay } = {}) 
   });
 }
 
-/** An OpenWeatherMap /weather request is about to be issued. */
+/** An extension-to-backend weather request is about to be issued. */
 export function recordWeatherCall() {
   withState((state) => {
     state.weatherCalls += 1;
   });
 }
 
-/** An OpenWeatherMap /geo request is about to be issued (forward or reverse). */
+/** An extension-to-backend location request is about to be issued (forward or reverse). */
 export function recordGeocodeCall() {
   withState((state) => {
     state.geocodeCalls += 1;

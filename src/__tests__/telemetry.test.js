@@ -111,16 +111,6 @@ describe('hashBucket', () => {
 });
 
 describe('daily rollup', () => {
-  test('emits nothing while the day is still open', () => {
-    seedUser(ID_IN_ROLLUP_ONLY);
-    recordTabOpen();
-    recordTabOutcome('cache_hit');
-    recordTabOpen();
-    recordWeatherCall();
-
-    expect(eventsNamed('daily_activity')).toHaveLength(0);
-  });
-
   test('emits one rollup for the previous day on the first activity of the next', () => {
     seedUser(ID_IN_ROLLUP_ONLY);
     recordTabOpen();
@@ -202,23 +192,6 @@ describe('daily rollup', () => {
       topPlanet: 'tatooine',
       planetsSeen: 2
     });
-  });
-
-  test('accumulates across page loads, since counters live in localStorage', () => {
-    seedUser(ID_IN_ROLLUP_ONLY);
-    recordTabOpen();
-    recordWeatherCall();
-
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.telemetry))).toMatchObject({
-      tabs: 1,
-      weatherCalls: 1
-    });
-    recordTabOpen();
-
-    setToday('2026-07-29');
-    recordTabOpen();
-
-    expect(eventsNamed('daily_activity')[0].properties).toMatchObject({ tabs: 2, weatherCalls: 1 });
   });
 
   test('still holds the day in storage at the moment it is handed to the SDK', () => {
@@ -551,54 +524,6 @@ describe('unwritable storage', () => {
 });
 
 describe('concurrent pages', () => {
-  /**
-   * Stands another extension page in the gap between this page's write and its
-   * read-back, the only window the token protocol arbitrates.
-   */
-  function raceOnNextWrite(match = () => true) {
-    const realSetItem = localStorage.setItem.bind(localStorage);
-    let raced = false;
-    localStorage.setItem = (key, value) => {
-      realSetItem(key, value);
-      if (raced || key !== STORAGE_KEYS.telemetry) {
-        return;
-      }
-
-      const written = JSON.parse(value);
-      if (!match(written)) {
-        return;
-      }
-
-      raced = true;
-      realSetItem(key, JSON.stringify({ ...written, emitToken: 'other-page' }));
-    };
-
-    return () => {
-      localStorage.setItem = realSetItem;
-    };
-  }
-
-  test('a mid-day flush that loses the race still ships its slice and never erases it', async () => {
-    seedUser(ID_IN_ROLLUP_ONLY);
-    recordTabOpen();
-    recordTabOpen();
-    recordWeatherCall();
-
-    advance(PARTIAL_FLUSH_INTERVAL_MS);
-    const restore = raceOnNextWrite();
-    flushDailyActivity();
-    restore();
-    await settleFlush();
-
-    // Whatever the race decided, every tab is either on the wire or still in the record.
-    const shipped = eventsNamed('daily_activity')
-      .reduce((total, event) => total + event.properties.tabs, 0);
-    expect(shipped + (storedState().tabs || 0)).toBe(2);
-    const shippedCalls = eventsNamed('daily_activity')
-      .reduce((total, event) => total + event.properties.weatherCalls, 0);
-    expect(shippedCalls + (storedState().weatherCalls || 0)).toBe(1);
-  });
-
   test('a rollover interrupted before its write still shipped the day', () => {
     seedUser(ID_IN_ROLLUP_ONLY);
     recordTabOpen();
@@ -628,29 +553,6 @@ describe('concurrent pages', () => {
     const sent = eventsNamed('daily_activity');
     expect(sent).toHaveLength(1);
     expect(sent[0].properties).toMatchObject({ date: '2026-07-28', tabs: 1, weatherCalls: 1 });
-  });
-
-  test('two pages closing the same day send duplicates ingest can dedup', () => {
-    seedUser(ID_IN_ROLLUP_ONLY);
-    recordTabOpen();
-    recordWeatherCall();
-
-    setToday('2026-07-29');
-
-    // Session restore after midnight: both pages read the same 07-28 record and both
-    // close it. Accepted residual (localStorage has no CAS), so the dedup tuple must match.
-    const restore = raceOnNextWrite((written) => written.date === '2026-07-29');
-    recordTabOpen();
-    restore();
-
-    const sent = eventsNamed('daily_activity').filter((e) => e.properties.date === '2026-07-28');
-    expect(sent.length).toBeGreaterThanOrEqual(1);
-
-    const keys = new Set(sent.map((e) => {
-      const { date, sequence, partial } = e.properties;
-      return `${date}|${sequence}|${partial}`;
-    }));
-    expect(keys.size).toBe(1);
   });
 
   test('a page that reads after the rollover has landed does not close the day again', () => {

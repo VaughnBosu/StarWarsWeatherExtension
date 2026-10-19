@@ -135,3 +135,13 @@
 - your city name is now remembered for up to 30 days instead of being looked up on every new tab, roughly halving the requests made to the weather service
 - repeating a location search in the popup or during setup now brings the suggestions back instantly
 - updated localization strings (EN + ES + zh_TW)
+
+# v2.5
+- moved weather and location requests to a shared backend
+- added caching, rate limits, monitoring, and stale-weather fallback
+- weather still refreshes about once an hour, and sooner when you travel to a new area
+- new tabs wait briefly and show your last-known weather while the weather service is recovering from an outage
+- improved location accuracy without slowing down the initial new-tab load
+- reduced the size of the bundled artwork and hyperspace animation
+- improved error handling and reliability
+- weather data credit for OpenWeather in the FAQ

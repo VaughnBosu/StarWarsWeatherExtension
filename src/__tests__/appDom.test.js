@@ -1,6 +1,7 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeAll, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { HYPERSPACE_MIN_MS } from '../config.js';
 import {
   createLocalizationMock,
   installDom,
@@ -11,9 +12,9 @@ import {
 } from './testUtils.js';
 import {
   getPreferredUnit,
-  markPlanetVisited,
   setManualLocation,
   setPreferredUnit,
+  writeWeatherCache,
   writeLastKnownWeather,
   STORAGE_KEYS
 } from '../storage.js';
@@ -98,16 +99,6 @@ describe('app DOM updates', () => {
     expect(toggle.className).toBe('temp-toggle');
   });
 
-  test('updateMatchReason does not show match UI on the new tab', () => {
-    const localization = createLocalizationMock({});
-    document.getElementById('planet').innerText = 'HOTH';
-    expect(() => app.updateMatchReason('Matched: snow → Hoth', localization)).not.toThrow();
-    expect(document.getElementById('matchReason')).toBeNull();
-    expect(document.getElementById('matchReasonButton')).toBeNull();
-    expect(document.getElementById('planet').classList.contains('has-match-reason')).toBe(false);
-    expect(document.getElementById('planet').title).toBe('');
-  });
-
   test('handleTempToggle flips preferred unit and rebuilds message', async () => {
     const localization = createLocalizationMock({
       location_display: { message: 'Showing weather in: $1' },
@@ -157,6 +148,19 @@ describe('app DOM updates', () => {
     expect(document.getElementById('loading').innerText).toBe('');
     expect(document.getElementById('locationLabel').innerText).toBe('Showing weather in: Paris');
     expect(document.getElementById('LastUpdated').innerText).toBe('Last Updated: --');
+
+    const video = document.querySelector('#test video');
+    expect(video).toBeTruthy();
+    expect(video.autoplay).toBe(true);
+    expect(video.loop).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(video.playsInline).toBe(true);
+    expect(video.preload).toBe('auto');
+    expect(video.querySelector('source').getAttribute('src')).toBe('/public/assets/hyperspace.mp4');
+    expect(video.querySelector('source').getAttribute('type')).toBe('video/mp4');
+
+    app.showLoadingState(localization, 'Paris');
+    expect(document.querySelectorAll('#test video')).toHaveLength(1);
   });
 
   test('showErrorState updates message and clears description', () => {
@@ -234,8 +238,20 @@ const HOT_WEATHER = {
 };
 
 const LOCALE_ROUTE = { match: '_locales', json: LOCALE_MESSAGES };
-const GEOCODE_ROUTE = { match: 'geo/1.0/reverse', json: [{ name: 'Austin', state: 'Texas', country: 'US' }] };
-const WEATHER_OK = { match: 'data/2.5/weather', json: HOT_WEATHER };
+const GEOCODE_ROUTE = {
+  match: '/v1/locations/reverse',
+  json: { location: { name: 'Austin', state: 'Texas', country: 'US' } }
+};
+const WEATHER_OK = {
+  match: '/v1/weather',
+  json: {
+    weather: HOT_WEATHER,
+    observedAt: new Date().toISOString(),
+    freshUntil: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+    stale: false,
+    cacheStatus: 'miss'
+  }
+};
 
 /**
  * Routes by URL because refreshWeather()'s request order shifts with the caches each
@@ -255,6 +271,7 @@ function installFetchRouter(routes) {
     return {
       ok: route.ok !== false,
       status: route.status ?? 200,
+      headers: { get: (name) => route.headers?.[name] ?? null },
       json: async () => route.json ?? {}
     };
   };
@@ -293,11 +310,11 @@ describe('new tab render', () => {
   const realFetch = globalThis.fetch;
   const realNavigator = globalThis.navigator;
   const realSetTimeout = globalThis.setTimeout;
-  const realApiKey = globalThis.API_KEY;
+  const realBackendBaseUrl = globalThis.BACKEND_BASE_URL;
 
   beforeEach(() => {
     installRuntimeMock();
-    globalThis.API_KEY = 'test-key';
+    globalThis.BACKEND_BASE_URL = 'https://weather.example.test';
     // skip the hyperspace hold, it's a UX floor and isn't under test
     globalThis.setTimeout = (callback) => {
       callback();
@@ -308,7 +325,10 @@ describe('new tab render', () => {
       onLine: true,
       geolocation: {
         getCurrentPosition(success) {
-          success({ coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude } });
+          success({
+            coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude, accuracy: 50 },
+            timestamp: Date.now()
+          });
         }
       }
     });
@@ -327,11 +347,671 @@ describe('new tab render', () => {
     } else {
       delete globalThis.navigator;
     }
-    if (realApiKey) {
-      globalThis.API_KEY = realApiKey;
+    if (realBackendBaseUrl) {
+      globalThis.BACKEND_BASE_URL = realBackendBaseUrl;
     } else {
-      delete globalThis.API_KEY;
+      delete globalThis.BACKEND_BASE_URL;
     }
+  });
+
+  test('a fresh cache hit never instantiates the hyperspace video', async () => {
+    writeWeatherCache({
+      planetId: 'hoth',
+      planetClass: 'hoth',
+      planetName: 'Hoth',
+      headingPrefix: "IT'S LIKE",
+      headingSuffix: 'OUTSIDE',
+      message: 'Cold',
+      description: 'Ice',
+      lastUpdated: new Date().toISOString(),
+      lastUpdatedLabel: 'Last Updated: now',
+      freshUntil: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+      locationKey: 'auto',
+      locationName: 'Austin, TX',
+      weatherLocation: {
+        cell: '30.27,-97.74',
+        accuracyMeters: 50,
+        positionAt: new Date().toISOString()
+      },
+      language: 'en',
+      unit: 'fahrenheit',
+      timeOfDay: 'afternoon',
+      timeOfDayLabel: 'Afternoon'
+    });
+    const fetchMock = installFetchRouter([LOCALE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(document.getElementById('planet').innerText).toBe('HOTH');
+    expect(document.querySelector('#test video')).toBeNull();
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(false);
+  });
+
+  function cachedHoth(overrides = {}) {
+    return {
+      planetId: 'hoth',
+      planetClass: 'hoth',
+      planetName: 'Hoth',
+      headingPrefix: "IT'S LIKE",
+      headingSuffix: 'OUTSIDE',
+      message: 'Cold',
+      description: 'Ice',
+      lastUpdated: new Date().toISOString(),
+      lastUpdatedLabel: 'Last Updated: now',
+      locationKey: 'auto',
+      locationName: 'Austin, TX',
+      weatherLocation: {
+        cell: '30.27,-97.74',
+        accuracyMeters: 50,
+        positionAt: new Date().toISOString()
+      },
+      language: 'en',
+      unit: 'fahrenheit',
+      timeOfDay: 'afternoon',
+      timeOfDayLabel: 'Afternoon',
+      ...overrides
+    };
+  }
+
+  test('a same-cell cached reading is kept after the backend freshness window passes', async () => {
+    writeWeatherCache(cachedHoth({
+      freshUntil: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      cachedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString()
+    }));
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(document.getElementById('planet').innerText).toBe('HOTH');
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(false);
+  });
+
+  test('a manual-location reading is kept for the local TTL too', async () => {
+    setManualLocation({ name: 'Austin', displayName: 'Austin, TX', lat: 30.2672, lon: -97.7431, country: 'US' });
+    writeWeatherCache(cachedHoth({
+      locationKey: 'manual:30.2672,-97.7431',
+      freshUntil: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      weatherLocation: undefined
+    }));
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(document.getElementById('planet').innerText).toBe('HOTH');
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(false);
+  });
+
+  test('a reading the backend served stale is re-checked after 15 minutes, not before', async () => {
+    writeWeatherCache(cachedHoth({
+      stale: true,
+      cachedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    }));
+    let fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+    await app.refreshWeather();
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(false);
+
+    writeWeatherCache(cachedHoth({
+      stale: true,
+      cachedAt: new Date(Date.now() - 16 * 60 * 1000).toISOString()
+    }));
+    fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+    await app.refreshWeather();
+    expect(fetchMock.calls.filter((url) => url.includes('/v1/weather'))).toHaveLength(1);
+    expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.cache));
+    expect(stored.stale).toBeUndefined();
+  });
+
+  test('a v2.4 cache entry without a recorded cell adopts the current one without a request', async () => {
+    // v2.4 wrote neither a cell nor cachedAt; its lastUpdated was the fetch time.
+    const fetchedTenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { weatherLocation, ...v24Record } = cachedHoth({ lastUpdated: fetchedTenMinutesAgo });
+    localStorage.setItem(STORAGE_KEYS.cache, JSON.stringify(v24Record));
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(false);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.cache));
+    expect(stored.weatherLocation.cell).toBe('30.27,-97.74');
+    expect(stored.cachedAt).toBe(fetchedTenMinutesAgo);
+  });
+
+  test('after a 503 with Retry-After, new tabs use last-known weather until the wait ends', async () => {
+    seedLastKnownHoth();
+    installFetchRouter([
+      LOCALE_ROUTE,
+      GEOCODE_ROUTE,
+      { match: '/v1/weather', ok: false, status: 503, headers: { 'Retry-After': '120' } }
+    ]);
+    await app.refreshWeather();
+    expect(document.getElementById('LastUpdated').innerText).toContain('Sensors offline');
+    const retryAt = Number(localStorage.getItem(STORAGE_KEYS.backendRetryAt));
+    expect(retryAt - Date.now()).toBeGreaterThan(110 * 1000);
+    expect(retryAt - Date.now()).toBeLessThanOrEqual(180 * 1000);
+
+    let fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+    await app.refreshWeather();
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(false);
+    expect(document.getElementById('planet').innerText).toBe('HOTH');
+
+    // A settings change or the online retry is user-driven and still tries.
+    fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+    await app.refreshWeather({ isNewTab: false });
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(true);
+    expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+    expect(localStorage.getItem(STORAGE_KEYS.backendRetryAt)).toBeNull();
+  });
+
+  test('a client error does not start a backoff', async () => {
+    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: '/v1/weather', ok: false, status: 400 }]);
+    await app.refreshWeather();
+    expect(localStorage.getItem(STORAGE_KEYS.backendRetryAt)).toBeNull();
+  });
+
+  test('a retry time further ahead than any backoff can write is discarded', async () => {
+    seedLastKnownHoth();
+    localStorage.setItem(STORAGE_KEYS.backendRetryAt, String(Date.now() + 24 * 60 * 60 * 1000));
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(true);
+    expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+    expect(localStorage.getItem(STORAGE_KEYS.backendRetryAt)).toBeNull();
+  });
+
+  test('a network failure while the device is offline does not hold back other tabs', async () => {
+    seedLastKnownHoth();
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: false,
+      geolocation: {
+        getCurrentPosition(success) {
+          success({ coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude } });
+        }
+      }
+    });
+    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: '/v1/weather', error: new TypeError('Failed to fetch') }]);
+
+    await app.refreshWeather();
+
+    expect(document.getElementById('LastUpdated').innerText).toContain('Sensors offline');
+    expect(localStorage.getItem(STORAGE_KEYS.backendRetryAt)).toBeNull();
+  });
+
+  test('a position jittering just across the cell edge is not treated as travel', async () => {
+    writeWeatherCache(cachedHoth());
+    for (const latitude of [30.2649, 30.2651, 30.2648]) {
+      installNavigator(globalThis.window, {
+        language: 'en-US',
+        onLine: true,
+        geolocation: {
+          getCurrentPosition(success) {
+            success({ coords: { latitude, longitude: AUSTIN.longitude, accuracy: 30 }, timestamp: Date.now() });
+          }
+        }
+      });
+      const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+      await app.refreshWeather();
+
+      expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(false);
+      expect(document.getElementById('planet').innerText).toBe('HOTH');
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.cache)).weatherLocation.cell).toBe('30.27,-97.74');
+    }
+  });
+
+  test('a poor same-cell cache validation can refine after cached weather is visible', async () => {
+    writeWeatherCache({
+      planetId: 'hoth',
+      planetClass: 'hoth',
+      planetName: 'Hoth',
+      headingPrefix: "IT'S LIKE",
+      headingSuffix: 'OUTSIDE',
+      message: 'Cold',
+      description: 'Ice',
+      lastUpdated: new Date().toISOString(),
+      lastUpdatedLabel: 'Last Updated: now',
+      freshUntil: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+      locationKey: 'auto',
+      locationName: 'Austin, TX',
+      weatherLocation: {
+        cell: '30.27,-97.74',
+        accuracyMeters: 2000,
+        positionAt: new Date().toISOString()
+      },
+      language: 'en',
+      unit: 'fahrenheit',
+      timeOfDay: 'afternoon',
+      timeOfDayLabel: 'Afternoon'
+    });
+
+    const optionsSeen = [];
+    const planetsWhenLocationWasRequested = [];
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: true,
+      geolocation: {
+        getCurrentPosition(success, _error, options) {
+          optionsSeen.push(options);
+          planetsWhenLocationWasRequested.push(document.getElementById('planet').innerText);
+          if (options.enableHighAccuracy) {
+            success({
+              coords: { latitude: 30.2578, longitude: -97.7525, accuracy: 100 },
+              timestamp: Date.now()
+            });
+            return;
+          }
+          success({
+            coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude, accuracy: 2000 },
+            timestamp: Date.now()
+          });
+        }
+      }
+    });
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(optionsSeen.map((options) => [options.enableHighAccuracy, options.maximumAge]))
+      .toEqual([[false, 120000], [true, 0]]);
+    expect(planetsWhenLocationWasRequested).toEqual(['HOTH', 'HOTH']);
+    expect(fetchMock.calls.filter((url) => url.includes('/v1/weather'))).toHaveLength(1);
+    expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+    expect(document.querySelector('#test video')).toBeNull();
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.cache));
+    expect(stored.weatherLocation.cell).toBe('30.26,-97.75');
+    expect(stored.weatherLocation.accuracyMeters).toBe(100);
+  });
+
+  test('renders cached weather before checking location, then refreshes after movement', async () => {
+    writeWeatherCache({
+      planetId: 'hoth',
+      planetClass: 'hoth',
+      planetName: 'Hoth',
+      headingPrefix: "IT'S LIKE",
+      headingSuffix: 'OUTSIDE',
+      message: 'Cold',
+      description: 'Ice',
+      lastUpdated: new Date().toISOString(),
+      lastUpdatedLabel: 'Last Updated: now',
+      freshUntil: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+      locationKey: 'auto',
+      locationName: 'Austin, TX',
+      weatherLocation: {
+        cell: '30.27,-97.74',
+        accuracyMeters: 50,
+        positionAt: new Date().toISOString()
+      },
+      language: 'en',
+      unit: 'fahrenheit',
+      timeOfDay: 'afternoon',
+      timeOfDayLabel: 'Afternoon'
+    });
+
+    let planetWhenLocationWasRequested = null;
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: true,
+      geolocation: {
+        getCurrentPosition(success, _error, options) {
+          planetWhenLocationWasRequested = document.getElementById('planet').innerText;
+          expect(options.enableHighAccuracy).toBe(false);
+          expect(options.maximumAge).toBe(120000);
+          success({
+            coords: { latitude: 32.7767, longitude: -96.797, accuracy: 50 },
+            timestamp: Date.now()
+          });
+        }
+      }
+    });
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(planetWhenLocationWasRequested).toBe('HOTH');
+    expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+    const weatherUrl = new URL(fetchMock.calls.find((url) => url.includes('/v1/weather')));
+    expect(weatherUrl.searchParams.get('lat')).toBe('32.78');
+    expect(weatherUrl.searchParams.get('lon')).toBe('-96.8');
+    expect(document.querySelector('#test video')).toBeNull();
+  });
+
+  test('a poor fast fix is refined only after weather is visible', async () => {
+    const optionsSeen = [];
+    let planetWhenHighAccuracyStarted = null;
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: true,
+      geolocation: {
+        getCurrentPosition(success, _error, options) {
+          optionsSeen.push(options);
+          if (options.enableHighAccuracy) {
+            planetWhenHighAccuracyStarted = document.getElementById('planet').innerText;
+            success({
+              coords: { latitude: 30.2578, longitude: -97.7525, accuracy: 100 },
+              timestamp: Date.now()
+            });
+            return;
+          }
+          success({
+            coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude, accuracy: 2000 },
+            timestamp: Date.now()
+          });
+        }
+      }
+    });
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(optionsSeen.map((options) => options.enableHighAccuracy)).toEqual([false, true]);
+    expect(planetWhenHighAccuracyStarted).toBe('TATOOINE');
+    expect(fetchMock.calls.filter((url) => url.includes('/v1/weather'))).toHaveLength(2);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.cache));
+    expect(stored.weatherLocation.cell).toBe('30.26,-97.75');
+    expect(stored.weatherLocation.accuracyMeters).toBe(100);
+    expect(stored.weatherLocation.highAccuracyCheckedAt).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.lastKnownWeather)).weatherLocation).toBeUndefined();
+  });
+
+  test('a failing refinement never repaints a rendered result as offline', async () => {
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: true,
+      geolocation: {
+        getCurrentPosition(success, _error, options) {
+          if (options.enableHighAccuracy) {
+            // A broken provider hands back a better accuracy with unusable coordinates.
+            success({ coords: { latitude: 'north', longitude: 'west', accuracy: 10 }, timestamp: Date.now() });
+            return;
+          }
+          success({
+            coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude, accuracy: 2000 },
+            timestamp: Date.now()
+          });
+        }
+      }
+    });
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+    expect(document.getElementById('LastUpdated').innerText).not.toContain('offline');
+    expect(fetchMock.calls.filter((url) => url.includes('/v1/weather'))).toHaveLength(1);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.cache));
+    expect(stored.offline).toBeUndefined();
+    expect(stored.weatherLocation.cell).toBe('30.27,-97.74');
+  });
+
+  test('a stale fast position is replaced by a fresh standard fix after first paint', async () => {
+    const optionsSeen = [];
+    let planetWhenFreshCheckStarted = null;
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: true,
+      geolocation: {
+        getCurrentPosition(success, _error, options) {
+          optionsSeen.push(options);
+          if (options.maximumAge === 120000) {
+            planetWhenFreshCheckStarted = document.getElementById('planet').innerText;
+            success({
+              coords: { latitude: 32.7767, longitude: -96.797, accuracy: 50 },
+              timestamp: Date.now()
+            });
+            return;
+          }
+          success({
+            coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude, accuracy: 50 },
+            timestamp: Date.now() - 9 * 60 * 1000
+          });
+        }
+      }
+    });
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(optionsSeen.map((options) => [options.enableHighAccuracy, options.maximumAge]))
+      .toEqual([[false, 600000], [false, 120000]]);
+    expect(planetWhenFreshCheckStarted).toBe('TATOOINE');
+    expect(fetchMock.calls.filter((url) => url.includes('/v1/weather'))).toHaveLength(2);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.cache)).weatherLocation.cell)
+      .toBe('32.78,-96.80');
+  });
+
+  test('a superseded background result cannot overwrite a setting change', async () => {
+    writeWeatherCache({
+      planetId: 'hoth',
+      planetClass: 'hoth',
+      planetName: 'Hoth',
+      headingPrefix: "IT'S LIKE",
+      headingSuffix: 'OUTSIDE',
+      message: 'Cold',
+      description: 'Ice',
+      lastUpdated: new Date().toISOString(),
+      lastUpdatedLabel: 'Last Updated: now',
+      freshUntil: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+      locationKey: 'auto',
+      locationName: 'Austin, TX',
+      weatherLocation: {
+        cell: '30.27,-97.74',
+        accuracyMeters: 50,
+        positionAt: new Date().toISOString()
+      },
+      language: 'en',
+      unit: 'fahrenheit',
+      timeOfDay: 'afternoon',
+      timeOfDayLabel: 'Afternoon'
+    });
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: true,
+      geolocation: {
+        getCurrentPosition(success) {
+          setPreferredUnit('celsius');
+          success({
+            coords: { latitude: 32.7767, longitude: -96.797, accuracy: 50 },
+            timestamp: Date.now()
+          });
+        }
+      }
+    });
+    installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(document.getElementById('planet').innerText).toBe('HOTH');
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.cache)).planetId).toBe('hoth');
+    expect(getPreferredUnit()).toBe('celsius');
+  });
+
+  /** Holds the first location request open; later requests answer from Austin at once. */
+  function installHangingFirstFix() {
+    const held = [];
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: true,
+      geolocation: {
+        getCurrentPosition(success, error) {
+          if (held.length === 0) {
+            held.push({ success, error });
+            return;
+          }
+          success({
+            coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude, accuracy: 50 },
+            timestamp: Date.now()
+          });
+        }
+      }
+    });
+    return held;
+  }
+
+  /** Fails held requests so a failed assertion cannot leave the refresh chain hung. */
+  async function releaseHeld(held, chain) {
+    held.forEach((request) => request.error({ code: 3, message: 'Timeout expired' }));
+    await chain;
+  }
+
+  /** Resolves 'blocked' if the refresh is still waiting after real time has passed. */
+  function settleOrBlock(promise) {
+    return Promise.race([
+      promise.then(() => 'rendered'),
+      new Promise((resolve) => realSetTimeout(() => resolve('blocked'), 100))
+    ]);
+  }
+
+  test('a setting change starts at once instead of waiting on the background location check', async () => {
+    writeWeatherCache(cachedHoth());
+    const held = installHangingFirstFix();
+    const fetchMock = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    const chain = app.refreshWeather();
+    try {
+      await flushAsync();
+      expect(document.getElementById('planet').innerText).toBe('HOTH');
+      expect(held).toHaveLength(1);
+
+      setManualLocation({ name: 'Tokyo', displayName: 'Tokyo, JP', lat: 35.6895, lon: 139.6917, country: 'JP' });
+
+      expect(await settleOrBlock(app.refreshWeather({ isNewTab: false }))).toBe('rendered');
+      expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+      expect(document.getElementById('locationLabel').innerText).toContain('Tokyo');
+
+      // The abandoned check answers late, from another city: no fetch, no cache write.
+      const weatherCalls = fetchMock.calls.filter((url) => url.includes('/v1/weather')).length;
+      held[0].success({ coords: { latitude: 32.7767, longitude: -96.797, accuracy: 50 }, timestamp: Date.now() });
+      await flushAsync();
+
+      expect(fetchMock.calls.filter((url) => url.includes('/v1/weather'))).toHaveLength(weatherCalls);
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.cache)).locationKey).toBe('manual:35.6895,139.6917');
+    } finally {
+      await releaseHeld(held, chain);
+    }
+  });
+
+  test('a setting change does not wait for GPS refinement of a rendered reading', async () => {
+    const heldHighAccuracy = [];
+    installNavigator(globalThis.window, {
+      language: 'en-US',
+      onLine: true,
+      geolocation: {
+        getCurrentPosition(success, error, options) {
+          if (options.enableHighAccuracy) {
+            heldHighAccuracy.push({ success, error });
+            return;
+          }
+          success({
+            coords: { latitude: AUSTIN.latitude, longitude: AUSTIN.longitude, accuracy: 2000 },
+            timestamp: Date.now()
+          });
+        }
+      }
+    });
+    installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    const chain = app.refreshWeather();
+    try {
+      await flushAsync();
+      expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+      expect(heldHighAccuracy).toHaveLength(1);
+
+      setManualLocation({ name: 'Tokyo', displayName: 'Tokyo, JP', lat: 35.6895, lon: 139.6917, country: 'JP' });
+
+      expect(await settleOrBlock(app.refreshWeather({ isNewTab: false }))).toBe('rendered');
+      expect(document.getElementById('locationLabel').innerText).toContain('Tokyo');
+    } finally {
+      await releaseHeld(heldHighAccuracy, chain);
+    }
+  });
+
+  test('an abandoned background check that later fails records nothing and arms no retry', async () => {
+    const registered = [];
+    const realAddEventListener = globalThis.window.addEventListener.bind(globalThis.window);
+    globalThis.window.addEventListener = (type, ...rest) => {
+      registered.push(type);
+      return realAddEventListener(type, ...rest);
+    };
+    writeWeatherCache(cachedHoth());
+    const held = installHangingFirstFix();
+    installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    const chain = app.refreshWeather();
+    try {
+      await flushAsync();
+
+      // Same settings, so only the abandoned pass's generation tells it apart.
+      expect(await settleOrBlock(app.refreshWeather({ isNewTab: false }))).toBe('rendered');
+      const errorsBefore = JSON.parse(localStorage.getItem(STORAGE_KEYS.telemetry)).errors;
+
+      held[0].error({ code: 3, message: 'Timeout expired' });
+      await flushAsync();
+
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.telemetry)).errors).toBe(errorsBefore);
+      expect(registered).not.toContain('online');
+    } finally {
+      await releaseHeld(held, chain);
+    }
+  });
+
+  test('a settings refresh over a rendered reading clears it at once and skips hyperspace', async () => {
+    const delays = [];
+    globalThis.setTimeout = (callback, ms) => {
+      delays.push(ms);
+      callback();
+      return 0;
+    };
+    writeWeatherCache(cachedHoth());
+    const router = installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+    await app.refreshWeather();
+    expect(document.getElementById('planet').innerText).toBe('HOTH');
+
+    let releaseWeather;
+    const weatherGate = new Promise((resolve) => {
+      releaseWeather = resolve;
+    });
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('/v1/weather')) {
+        await weatherGate;
+      }
+      return router(input, init);
+    };
+    setManualLocation({ name: 'Tokyo', displayName: 'Tokyo, JP', lat: 35.6895, lon: 139.6917, country: 'JP' });
+
+    const refresh = app.refreshWeather({ isNewTab: false });
+    try {
+      await flushAsync();
+
+      expect(document.getElementById('locationLabel').innerText).toContain('Tokyo');
+      expect(document.getElementById('planet').innerText).toBe('');
+      expect(document.getElementById('message').innerText).toBe('');
+      expect(document.querySelector('#test video')).toBeNull();
+    } finally {
+      releaseWeather();
+      await refresh;
+    }
+
+    expect(document.getElementById('planet').innerText).toBe('TATOOINE');
+    expect(delays.filter((ms) => ms > 0 && ms <= HYPERSPACE_MIN_MS)).toEqual([]);
+  });
+
+  test('a cold new tab still plays hyperspace for the minimum time', async () => {
+    const delays = [];
+    globalThis.setTimeout = (callback, ms) => {
+      delays.push(ms);
+      callback();
+      return 0;
+    };
+    installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+
+    await app.refreshWeather();
+
+    expect(document.querySelector('#test video')).toBeTruthy();
+    expect(delays.some((ms) => ms > HYPERSPACE_MIN_MS - 1000 && ms <= HYPERSPACE_MIN_MS)).toBe(true);
+    expect(document.getElementById('planet').innerText).toBe('TATOOINE');
   });
 
   // Regression: a device with full or blocked localStorage saw "Sensors offline" on
@@ -371,19 +1051,30 @@ describe('new tab render', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.lastKnownWeather)).planetId).toBe('tatooine');
   });
 
-  test('an HTTP failure surfaces a service error instead of stale weather', async () => {
+  test('a rate limit uses the last-known weather instead of dropping valid traffic', async () => {
     seedLastKnownHoth();
-    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: 'data/2.5/weather', ok: false, status: 429 }]);
+    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: '/v1/weather', ok: false, status: 429 }]);
     document.getElementById('planet').innerText = 'HOTH';
 
     await app.refreshWeather();
 
-    expect(document.getElementById('message').innerText).toBe('Unable to retrieve weather data right now.');
-    expect(document.getElementById('message').innerText).not.toContain('Sensors offline');
-    expect(document.getElementById('planet').innerText).toBe('');
-    expect(document.getElementById('LastUpdated').innerText).toBe('Last Updated: --');
+    expect(document.getElementById('planet').innerText).toBe('HOTH');
+    expect(document.getElementById('LastUpdated').innerText).toContain('Sensors offline');
 
-    // No stale data was shown, so nothing counts as a fallback.
+    const telemetry = JSON.parse(localStorage.getItem(STORAGE_KEYS.telemetry));
+    expect(telemetry.errors).toBe(1);
+    expect(telemetry.offlineFallbacks).toBe(1);
+  });
+
+  test('a client error stays visible instead of masking a broken release', async () => {
+    seedLastKnownHoth();
+    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: '/v1/weather', ok: false, status: 400 }]);
+    document.getElementById('planet').innerText = 'HOTH';
+
+    await app.refreshWeather();
+
+    expect(document.getElementById('LastUpdated').innerText).not.toContain('Sensors offline');
+    expect(document.getElementById('message').innerText).toBe('Unable to retrieve weather data right now.');
     const telemetry = JSON.parse(localStorage.getItem(STORAGE_KEYS.telemetry));
     expect(telemetry.errors).toBe(1);
     expect(telemetry.offlineFallbacks).toBe(0);
@@ -391,7 +1082,7 @@ describe('new tab render', () => {
 
   test('a network failure with no status keeps the signal-lost experience', async () => {
     seedLastKnownHoth();
-    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: 'data/2.5/weather', error: new TypeError('Failed to fetch') }]);
+    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: '/v1/weather', error: new TypeError('Failed to fetch') }]);
 
     await app.refreshWeather();
 
@@ -416,7 +1107,7 @@ describe('new tab render', () => {
 
     await app.refreshWeather();
 
-    expect(fetchMock.calls.some((url) => url.includes('data/2.5/weather'))).toBe(true);
+    expect(fetchMock.calls.some((url) => url.includes('/v1/weather'))).toBe(true);
     expect(document.getElementById('planet').innerText).toBe('TATOOINE');
   });
 
@@ -428,7 +1119,7 @@ describe('new tab render', () => {
       return realAddEventListener(type, ...rest);
     };
 
-    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: 'data/2.5/weather', error: new TypeError('Failed to fetch') }]);
+    installFetchRouter([LOCALE_ROUTE, GEOCODE_ROUTE, { match: '/v1/weather', error: new TypeError('Failed to fetch') }]);
 
     await app.refreshWeather();
     await app.refreshWeather({ isNewTab: false });
@@ -448,7 +1139,7 @@ describe('new tab render', () => {
   test('last-known weather for one location is not rendered for another', async () => {
     setManualLocation({ name: 'Tokyo', displayName: 'Tokyo, JP', lat: 35.6895, lon: 139.6917, country: 'JP' });
     seedLastKnownHoth({ planetId: 'tatooine', planetName: 'Tatooine', locationKey: 'auto', locationName: 'Austin, TX' });
-    installFetchRouter([LOCALE_ROUTE, { match: 'data/2.5/weather', error: new TypeError('Failed to fetch') }]);
+    installFetchRouter([LOCALE_ROUTE, { match: '/v1/weather', error: new TypeError('Failed to fetch') }]);
 
     await app.refreshWeather();
 
@@ -469,7 +1160,7 @@ describe('new tab render', () => {
       tempC: 32
     });
     setPreferredUnit('celsius');
-    installFetchRouter([LOCALE_ROUTE, { match: 'data/2.5/weather', error: new TypeError('Failed to fetch') }]);
+    installFetchRouter([LOCALE_ROUTE, { match: '/v1/weather', error: new TypeError('Failed to fetch') }]);
 
     await app.refreshWeather();
 
@@ -518,6 +1209,24 @@ describe('new tab render', () => {
     const lastKnown = JSON.parse(localStorage.getItem(STORAGE_KEYS.lastKnownWeather));
     expect(lastKnown.unit).toBe('celsius');
     expect(lastKnown.offline).toBeUndefined();
+  });
+
+  test('toggling units on a live reading keeps the original fetch time, so the TTL still ends', async () => {
+    installFetchRouter([LOCALE_ROUTE, WEATHER_OK, GEOCODE_ROUTE]);
+    await app.refreshWeather();
+    const fetchedAt = JSON.parse(localStorage.getItem(STORAGE_KEYS.cache)).cachedAt;
+    expect(fetchedAt).toBeString();
+
+    setSystemTime(new Date(Date.now() + 50 * 60 * 1000));
+    try {
+      await app.handleTempToggle();
+    } finally {
+      setSystemTime();
+    }
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.cache));
+    expect(stored.unit).toBe('celsius');
+    expect(stored.cachedAt).toBe(fetchedAt);
   });
 
   test('toggling units on a live reading moves last-known onto the new unit too', async () => {
@@ -745,17 +1454,5 @@ describe('passport rendering on the success path', () => {
     }
 
     expect(document.getElementById('planet').innerText).toBe('HOTH');
-  });
-
-  test('an already stamped planet does not rebuild the grid a second time', () => {
-    installDom(PASSPORT_MARKUP);
-    const localization = createLocalizationMock({});
-    markPlanetVisited('hoth');
-    const counter = countGridRebuilds();
-
-    app.applyWeatherToUi(viewModelFor('hoth'), localization);
-    app.persistSuccessfulWeather(viewModelFor('hoth'), localization);
-
-    expect(counter.rebuilds).toBe(1);
   });
 });

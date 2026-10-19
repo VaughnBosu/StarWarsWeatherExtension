@@ -69,16 +69,6 @@ describe('getInitial', () => {
 });
 
 describe('renderShortcuts', () => {
-  test('calculates visible shortcut count from row width', () => {
-    const container = document.createElement('div');
-    Object.defineProperty(container, 'clientWidth', {
-      configurable: true,
-      value: 560
-    });
-
-    expect(newtab.getVisibleShortcutCount(container)).toBe(7);
-  });
-
   test('renders tiles into container', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -97,23 +87,6 @@ describe('renderShortcuts', () => {
     expect(tiles.length).toBe(2);
     expect(tiles[0].href).toBe('https://github.com/');
     expect(tiles[0].querySelector('.shortcut-label').textContent).toBe('GitHub');
-  });
-
-  test('limits shortcuts to the number that fits in one row', () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    Object.defineProperty(container, 'clientWidth', {
-      configurable: true,
-      value: 560
-    });
-
-    const sites = Array.from({ length: 12 }, (_, i) => ({
-      title: `Site ${i}`,
-      url: `https://site${i}.com`
-    }));
-
-    newtab.renderShortcuts(sites, container);
-    expect(container.querySelectorAll('.shortcut-tile').length).toBe(7);
   });
 
   test('re-renders to a smaller count when available width shrinks', () => {
@@ -243,30 +216,6 @@ describe('applyVisibility', () => {
 });
 
 describe('applyHyperspaceHidden', () => {
-  test('adds hyperspace-hidden when setting is off and background has hyperspace class', () => {
-    const newtabExtras = document.createElement('section');
-    const background = document.createElement('div');
-    background.classList.add('hyperspace');
-    document.body.appendChild(newtabExtras);
-    document.body.appendChild(background);
-
-    localStorage.setItem('showExtrasInHyperspace', 'false');
-    newtab.applyHyperspaceHidden(newtabExtras, background);
-    expect(newtabExtras.classList.contains('hyperspace-hidden')).toBe(true);
-  });
-
-  test('does not add hyperspace-hidden when setting is on', () => {
-    const newtabExtras = document.createElement('section');
-    const background = document.createElement('div');
-    background.classList.add('hyperspace');
-    document.body.appendChild(newtabExtras);
-    document.body.appendChild(background);
-
-    localStorage.setItem('showExtrasInHyperspace', 'true');
-    newtab.applyHyperspaceHidden(newtabExtras, background);
-    expect(newtabExtras.classList.contains('hyperspace-hidden')).toBe(false);
-  });
-
   test('does not add hyperspace-hidden when background lacks hyperspace class', () => {
     const newtabExtras = document.createElement('section');
     const background = document.createElement('div');

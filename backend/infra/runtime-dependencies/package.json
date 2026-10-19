@@ -1,0 +1,10 @@
+{
+  "name": "star-wars-weather-lambda-dependencies",
+  "version": "2.5.0",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1121.0",
+    "@aws-sdk/client-secrets-manager": "3.1121.0",
+    "@aws-sdk/lib-dynamodb": "3.1121.0"
+  }
+}

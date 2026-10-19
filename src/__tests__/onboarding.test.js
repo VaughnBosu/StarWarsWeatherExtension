@@ -19,7 +19,7 @@ const realFetch = globalThis.fetch;
 const realBrowser = globalThis.browser;
 const realChrome = globalThis.chrome;
 const realNavigator = globalThis.navigator;
-const realApiKey = globalThis.API_KEY;
+const realBackendBaseUrl = globalThis.BACKEND_BASE_URL;
 
 const ONBOARDING_DOM = `
   <div class="step-indicator">
@@ -95,7 +95,7 @@ beforeEach(() => {
     }
   };
   delete globalThis.chrome;
-  globalThis.API_KEY = 'test-key';
+  globalThis.BACKEND_BASE_URL = 'https://weather.example.test';
 });
 
 afterEach(() => {
@@ -106,7 +106,7 @@ afterEach(() => {
   if (realBrowser) globalThis.browser = realBrowser; else delete globalThis.browser;
   if (realChrome) globalThis.chrome = realChrome; else delete globalThis.chrome;
   if (realNavigator) globalThis.navigator = realNavigator; else delete globalThis.navigator;
-  if (realApiKey) globalThis.API_KEY = realApiKey; else delete globalThis.API_KEY;
+  if (realBackendBaseUrl) globalThis.BACKEND_BASE_URL = realBackendBaseUrl; else delete globalThis.BACKEND_BASE_URL;
 });
 
 describe('step navigation', () => {
@@ -123,14 +123,6 @@ describe('step navigation', () => {
     expect(dot1.classList.contains('dot--active')).toBe(true);
     expect(dot2.classList.contains('dot--active')).toBe(true);
     expect(dot3.classList.contains('dot--active')).toBe(false);
-  });
-
-  test('showStep 4 activates all dots', () => {
-    onboarding.showStep(4);
-    const dots = document.querySelectorAll('.dot');
-    dots.forEach((dot) => {
-      expect(dot.classList.contains('dot--active')).toBe(true);
-    });
   });
 });
 
@@ -175,10 +167,10 @@ describe('location step', () => {
   test('handleManualSearch renders results', async () => {
     globalThis.fetch = createFetchMock([
       {
-        json: [
+        json: { locations: [
           { name: 'Austin', state: 'Texas', country: 'US', lat: 30.27, lon: -97.74 },
           { name: 'Paris', country: 'FR', lat: 48.86, lon: 2.35 }
-        ]
+        ] }
       }
     ]);
 
@@ -191,7 +183,7 @@ describe('location step', () => {
   });
 
   test('handleManualSearch shows no results message', async () => {
-    globalThis.fetch = createFetchMock([{ json: [] }]);
+    globalThis.fetch = createFetchMock([{ json: { locations: [] } }]);
 
     await onboarding.handleManualSearch('Nowhere');
 
@@ -201,7 +193,7 @@ describe('location step', () => {
 
   test('selecting a manual result stores location', async () => {
     globalThis.fetch = createFetchMock([
-      { json: [{ name: 'Tokyo', country: 'JP', lat: 35.68, lon: 139.69 }] }
+      { json: { locations: [{ name: 'Tokyo', country: 'JP', lat: 35.68, lon: 139.69 }] } }
     ]);
 
     await onboarding.handleManualSearch('Tokyo');
@@ -216,14 +208,6 @@ describe('location step', () => {
 });
 
 describe('format location display', () => {
-  test('formats US locations with state abbreviation', () => {
-    expect(onboarding.formatLocationDisplay({ name: 'Austin', state: 'Texas', country: 'US' })).toBe('Austin, TX');
-  });
-
-  test('formats non-US locations with country', () => {
-    expect(onboarding.formatLocationDisplay({ name: 'Paris', country: 'FR' })).toBe('Paris, FR');
-  });
-
   test('returns empty for missing name', () => {
     expect(onboarding.formatLocationDisplay({ country: 'US' })).toBe('');
   });

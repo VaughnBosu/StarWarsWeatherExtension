@@ -6,12 +6,10 @@ This extension is for Firefox and Chrome
 A while back there was a website by Tom Scott that would get the weather in an area and compare it to a Star Wars planet. This website has since stopped working due to reasons listed [here](https://www.tomscott.com/weather/starwars/). My project revives and expands on this idea, there are now 13 planets, and each one has 2 images for day and night. This also uses more data about the climate like humidity, wind speeds and elevation. This extension has options for Fahrenheit and Celsius.
 
 ## How does it work?
-1. This extension gets the user's location (or uses a saved manual city if you've configured one in the popup/options).
-2. Get the sunrise and sunset times for that location and determine day or night.
-3. Gives the location info to a [Weather API](https://openweathermap.org/).
-4. This API gather the following data temperature, conditions, humidity, wind.
-5. It use these parameters to deterime the planet. See exact details below.
-6. It gets the image (depending on time of day), description and message and edits the HTML to display them.
+1. Get the user's location, or use a city selected in settings.
+2. Fetch the current weather and sunrise/sunset times (data from [OpenWeather](https://openweathermap.org/)).
+3. Match the conditions to a Star Wars planet.
+4. Show the day or night artwork for that planet.
 
 ## How it Determines which Planet
 The rules in `src/planets.js` are checked **in order**, and the first one that matches wins.
@@ -34,9 +32,6 @@ The rules in `src/planets.js` are checked **in order**, and the first one that m
 
 Coruscant is also the fallback when nothing matches.
 
-## Privacy
-Privacy is incredibly important, that's why this project is open source. This extension is ran on the machine which installed it. This extension does NOT store any location data. Any stored data is on the users machine and not accessible anywhere else.
-
 ## Development
 
 ### Prerequisites
@@ -45,7 +40,9 @@ Privacy is incredibly important, that's why this project is open source. This ex
 ### Installation
 ```bash
 bun install  # Install dependencies
+cp src/env.example.js src/env.js
 ```
+CI generates `src/env.js` from the `BACKEND_BASE_URL` repository variable (the backend stack's `ApiBaseUrl` output); update it whenever the API host changes.
 
 ### Running the Extension
 No build step required - load the unpacked extension directly:
@@ -63,7 +60,7 @@ bun test  # Run tests with Bun's built-in test runner
 - `bun run dev` - Run with watch mode for development
 
 ### CI/CD
-Pushes to `main` automatically upload and publish the extension to the Chrome Web Store via a GitHub Actions workflow using [cws-cli](https://github.com/vaughnbosu/cws-cli).
+Pushes to `main` run the tests and publish a staged Chrome Web Store release.
 
 ## Contributing
 Like the project? Please consider contributing to this project, lots of improvements and optimizations can be made.

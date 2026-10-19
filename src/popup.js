@@ -19,7 +19,7 @@ import {
 } from './storage.js';
 import { loadLocalization, invalidateLocalizationCache } from './i18n.js';
 import { stateToAbbreviation } from './geo.js';
-import { GEOCODING_DIRECT_ENDPOINT, GEOCODING_RESULT_LIMIT } from './config.js';
+import { searchLocations } from './backend-client.js';
 import { recordGeocodeCall, track } from './telemetry.js';
 
 let currentLocalization = null;
@@ -308,23 +308,8 @@ async function fetchManualLocationSuggestions(query) {
     return cached.results;
   }
 
-  if (typeof API_KEY === 'undefined') {
-    throw new Error('API key is not available');
-  }
-
-  const url = new URL(GEOCODING_DIRECT_ENDPOINT);
-  url.searchParams.set('q', query);
-  url.searchParams.set('limit', String(GEOCODING_RESULT_LIMIT));
-  url.searchParams.set('appid', API_KEY);
-
   recordGeocodeCall();
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    // a failure says nothing about the query, so leave it uncached
-    throw new Error(`Geocoding request failed with status ${response.status}`);
-  }
-
-  const results = await response.json();
+  const results = await searchLocations(query);
   // empty lists cached too (shorter negative TTL) so retyping a typo doesn't re-request
   writeGeocodeQueryCache(query, results);
   return results;

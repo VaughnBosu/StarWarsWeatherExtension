@@ -9,12 +9,13 @@ import {
   isOnboardingComplete,
   markGeolocationAlerted,
   markPlanetVisited,
-  readGeocodeCache,
+  clearBackendRetryAt,
+  readBackendRetryAt,
   readLastKnownWeather,
   readWeatherCache,
   setPreferredUnit,
   STORAGE_KEYS,
-  writeGeocodeCache,
+  writeBackendRetryAt,
   writeLastKnownWeather,
   writeWeatherCache
 } from './storage.js';
@@ -22,29 +23,46 @@ import { loadLocalization } from './i18n.js';
 import { stateToAbbreviation } from './geo.js';
 import { PLANET_RULES, DEFAULT_PLANET_RULE, explainMatch } from './planets.js';
 import {
-  WEATHER_ENDPOINT,
-  GEOCODING_REVERSE_ENDPOINT,
+  BACKEND_BACKOFF_DEFAULT_MS,
+  BACKEND_BACKOFF_MAX_MS,
+  BACKEND_BACKOFF_MIN_MS,
+  BACKGROUND_GEOLOCATION_OPTIONS,
   GEOLOCATION_OPTIONS,
   DEGREE_SYMBOL,
-  HYPERSPACE_MIN_MS
+  GEOLOCATION_POSITION_MAX_AGE_MS,
+  GEOLOCATION_REFINEMENT_COOLDOWN_MS,
+  GEOLOCATION_REFINEMENT_THRESHOLD_METERS,
+  HIGH_ACCURACY_GEOLOCATION_OPTIONS,
+  HYPERSPACE_MIN_MS,
+  STALE_WEATHER_RETRY_MS,
+  TRAVEL_MARGIN_MAX_METERS,
+  TRAVEL_MARGIN_MIN_METERS,
+  WEATHER_COORDINATE_PRECISION
 } from './config.js';
 import {
+  BackendRequestError,
+  buildWeatherCoordinateKey,
+  getWeather
+} from './backend-client.js';
+import {
   recordError,
-  recordGeocodeCall,
   recordTabOpen,
   recordTabOutcome,
   recordWeatherCall,
   track
 } from './telemetry.js';
 import { initPassport, updatePassportUi } from './passport.js';
+import { fetchLocationDetails } from './location-details.js';
 
-const DEBUG = true;
+const DEBUG = globalThis.SWW_DEBUG === true;
 const DEBUG_FORCE_PLANET_ID = null;
 
 const SHOULD_INIT = !(typeof globalThis !== 'undefined' && globalThis.__SWW_SKIP_INIT__ === true);
 
 let currentViewModel = null;
 let currentLocalization = null;
+
+const HYPERSPACE_VIDEO_PATH = '/public/assets/hyperspace.mp4';
 
 function debug(...args) {
   if (DEBUG) {
@@ -58,6 +76,171 @@ function buildManualLocationKey(location) {
   }
 
   return `manual:${location.lat.toFixed(4)},${location.lon.toFixed(4)}`;
+}
+
+function parseFiniteTimestamp(value) {
+  const timestamp = typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function currentLocationKey() {
+  const manualLocation = getManualLocation();
+  const manualKey = manualLocation ? buildManualLocationKey(manualLocation) : null;
+  return manualLocation && manualKey !== 'manual:invalid' ? manualKey : 'auto';
+}
+
+function isRefreshContextCurrent({
+  preferredLanguage,
+  unit,
+  locationKey,
+  expectedViewModel = null,
+  generation = null
+}) {
+  return isRefreshPassCurrent(generation)
+    && getPreferredLanguage() === preferredLanguage
+    && getPreferredUnit() === unit
+    && currentLocationKey() === locationKey
+    && (!expectedViewModel || currentViewModel === expectedViewModel);
+}
+
+/**
+ * A reading the backend served stale is re-checked after a short wait. A normal
+ * reading is kept for the full local TTL, not the backend's shorter freshness window.
+ */
+function isStaleWeatherDue(weather, now = Date.now()) {
+  if (weather?.stale !== true) {
+    return false;
+  }
+  const cachedAt = parseFiniteTimestamp(weather.cachedAt);
+  return cachedAt === null || (now - cachedAt) >= STALE_WEATHER_RETRY_MS;
+}
+
+/** The furthest ahead noteBackendFailure writes; anything later predates a clock change. */
+const BACKEND_RETRY_AT_MAX_AHEAD_MS = BACKEND_BACKOFF_MAX_MS * 1.5;
+
+function isBackendBackingOff(now = Date.now()) {
+  try {
+    const retryAt = readBackendRetryAt();
+    if (retryAt === null || retryAt <= now) {
+      return false;
+    }
+    if (retryAt - now > BACKEND_RETRY_AT_MAX_AHEAD_MS) {
+      clearBackendRetryAt();
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Shared across open tabs through localStorage so new tabs back off together during
+ * an outage. Jitter spreads out retries from installs that failed together.
+ */
+function noteBackendFailure(error) {
+  if (!(error instanceof BackendRequestError) || error.retryable !== true) {
+    return;
+  }
+  // A device with no network says nothing about the service.
+  if ((error.code === 'network_error' || error.code === 'timeout') && isNavigatorOffline()) {
+    return;
+  }
+  const requestedMs = Number.isFinite(error.retryAfterSeconds)
+    ? error.retryAfterSeconds * 1000
+    : BACKEND_BACKOFF_DEFAULT_MS;
+  const baseMs = Math.min(BACKEND_BACKOFF_MAX_MS, Math.max(BACKEND_BACKOFF_MIN_MS, requestedMs));
+  const delayMs = Math.round(baseMs * (1 + (Math.random() * 0.5)));
+  safeStorageWrite('backend retry time', () => writeBackendRetryAt(Date.now() + delayMs));
+}
+
+function noteBackendSuccess() {
+  safeStorageWrite('backend retry time', () => {
+    if (readBackendRetryAt() !== null) {
+      clearBackendRetryAt();
+    }
+  });
+}
+
+function positionAccuracyMeters(position) {
+  const accuracy = Number(position?.coords?.accuracy);
+  return Number.isFinite(accuracy) && accuracy >= 0 ? Math.round(accuracy) : null;
+}
+
+function positionTimestamp(position) {
+  const timestamp = Number(position?.timestamp);
+  const parsed = Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp) : null;
+  return parsed && Number.isFinite(parsed.getTime())
+    ? parsed.toISOString()
+    : new Date().toISOString();
+}
+
+function isPositionStale(position, now = Date.now()) {
+  const timestamp = Number(position?.timestamp);
+  return !Number.isFinite(timestamp)
+    || timestamp <= 0
+    || (now - timestamp) > GEOLOCATION_POSITION_MAX_AGE_MS;
+}
+
+function buildWeatherLocation(position, { highAccuracyCheckedAt = null } = {}) {
+  const cell = buildWeatherCoordinateKey(
+    position?.coords?.latitude,
+    position?.coords?.longitude
+  );
+  return {
+    cell,
+    accuracyMeters: positionAccuracyMeters(position),
+    positionAt: positionTimestamp(position),
+    ...(parseFiniteTimestamp(highAccuracyCheckedAt) !== null ? { highAccuracyCheckedAt } : {})
+  };
+}
+
+/**
+ * Whether a fix still belongs to the cached cell once that cell is widened by a margin,
+ * so jitter across a gridline is not treated as travel.
+ */
+function isNearWeatherCell(position, cell) {
+  const [cellLat, cellLon] = String(cell ?? '').split(',').map(Number);
+  const lat = Number(position?.coords?.latitude);
+  const lon = Number(position?.coords?.longitude);
+  if (![cellLat, cellLon, lat, lon].every(Number.isFinite)) {
+    return false;
+  }
+
+  const marginMeters = Math.min(
+    TRAVEL_MARGIN_MAX_METERS,
+    Math.max(TRAVEL_MARGIN_MIN_METERS, positionAccuracyMeters(position) ?? 0)
+  );
+  const halfCellDegrees = 0.5 * (10 ** -WEATHER_COORDINATE_PRECISION);
+  const metersPerDegree = 111320;
+  const latSlack = halfCellDegrees + (marginMeters / metersPerDegree);
+  const lonSlack = halfCellDegrees
+    + (marginMeters / (metersPerDegree * Math.max(Math.cos(lat * Math.PI / 180), 0.01)));
+  const lonDelta = Math.abs((((lon - cellLon) % 360) + 540) % 360 - 180);
+  return Math.abs(lat - cellLat) <= latSlack && lonDelta <= lonSlack;
+}
+
+function shouldRefinePosition(position, weatherLocation, now = Date.now(), force = false) {
+  const accuracy = positionAccuracyMeters(position);
+  if (!force && accuracy !== null && accuracy <= GEOLOCATION_REFINEMENT_THRESHOLD_METERS) {
+    return false;
+  }
+
+  const lastChecked = parseFiniteTimestamp(weatherLocation?.highAccuracyCheckedAt);
+  return lastChecked === null || (now - lastChecked) >= GEOLOCATION_REFINEMENT_COOLDOWN_MS;
+}
+
+function isMateriallyBetterPosition(initialPosition, refinedPosition) {
+  const initialAccuracy = positionAccuracyMeters(initialPosition);
+  const refinedAccuracy = positionAccuracyMeters(refinedPosition);
+  if (refinedAccuracy === null) {
+    return false;
+  }
+  if (initialAccuracy === null) {
+    return refinedAccuracy <= GEOLOCATION_REFINEMENT_THRESHOLD_METERS;
+  }
+  return refinedAccuracy <= GEOLOCATION_REFINEMENT_THRESHOLD_METERS
+    || refinedAccuracy <= initialAccuracy / 2;
 }
 
 const WATCHED_SETTINGS = new Set([
@@ -90,16 +273,6 @@ function safeStorageWrite(label, write) {
   } catch (error) {
     console.warn(`Unable to persist ${label}`, error);
     return false;
-  }
-}
-
-/** Reads can throw too: the cache prunes expired entries, so a read writes. */
-function safeStorageRead(label, read, fallback = null) {
-  try {
-    return read();
-  } catch (error) {
-    console.warn(`Unable to read ${label}`, error);
-    return fallback;
   }
 }
 
@@ -143,7 +316,9 @@ function persistSuccessfulWeather(viewModel, localization = currentLocalization)
     }
 
     safeStorageWrite('weather cache', () => writeWeatherCache(viewModel));
-    safeStorageWrite('last known weather', () => writeLastKnownWeather(viewModel));
+    // Only the live cache carries the cell; the last-known fallback omits location metadata.
+    const { weatherLocation, ...lastKnownViewModel } = viewModel;
+    safeStorageWrite('last known weather', () => writeLastKnownWeather(lastKnownViewModel));
     safeStorageWrite('geolocation alert flag', () => clearGeolocationAlerted());
   } catch (error) {
     console.warn('Unable to persist the successful weather load', error);
@@ -253,17 +428,17 @@ function rehydrateLastKnownViewModel(stored, localization, language, unit) {
 }
 
 /** `locationKey` scopes the stale reading: weather saved elsewhere is no fallback for here. */
-function applyOfflineFallback(localization, language, unit, { errorType = 'unknown', locationKey = null, isNewTab = false } = {}) {
+function applyOfflineFallback(localization, language, unit, { errorType = 'unknown', errorCode = null, locationKey = null, isNewTab = false } = {}) {
   // Only renders that recordTabOpen() counted may report a fallback, or
   // offlineFallbacks/tabs exceeds 1. Re-renders still add to `errors`.
   const fallbackForRollup = (mode) => (isNewTab ? mode : null);
 
   const lastKnown = readLastKnownWeather({ language, unit, locationKey });
   if (lastKnown) {
-    debug('Applying last-known weather offline fallback', lastKnown);
+    debug('Applying last-known weather offline fallback');
     const viewModel = rehydrateLastKnownViewModel(lastKnown, localization, language, unit);
     applyWeatherToUi(viewModel, localization);
-    recordError({ errorType, fallback: fallbackForRollup('last_known') });
+    recordError({ errorType, errorCode, fallback: fallbackForRollup('last_known') });
     recordRenderOutcome(isNewTab, 'error', {
       planetId: viewModel.planetId,
       planet: viewModel.planetName,
@@ -275,7 +450,7 @@ function applyOfflineFallback(localization, language, unit, { errorType = 'unkno
   debug('No last-known weather; showing random offline planet');
   const viewModel = buildOfflineRandomViewModel(localization, language, unit);
   applyWeatherToUi(viewModel, localization);
-  recordError({ errorType, fallback: fallbackForRollup('random') });
+  recordError({ errorType, errorCode, fallback: fallbackForRollup('random') });
   recordRenderOutcome(isNewTab, 'error', {
     planetId: viewModel.planetId,
     planet: viewModel.planetName,
@@ -285,12 +460,15 @@ function applyOfflineFallback(localization, language, unit, { errorType = 'unkno
 }
 
 /**
- * An HTTP status means the service answered and refused (bad key, quota, outage), so it gets an
- * explicit error rather than a stale planet passed off as the sky. Everything else is signal lost.
+ * A retryable backend/provider failure uses the last known reading. Client mistakes such as a
+ * malformed request remain visible instead of silently masking a broken release.
  */
 function handleWeatherFailure(error, { localization, language, unit, locationKey, locationName = null, errorType, isNewTab }) {
-  const status = Number(error?.status);
-  if (Number.isFinite(status)) {
+  const status = typeof error?.status === 'number' ? error.status : Number.NaN;
+  // backend-client.js classifies HTTP 429/5xx, timeouts and network failures as retryable;
+  // anything without a status (geolocation errors, storage) is treated the same way.
+  const retryable = error?.retryable === true || !Number.isFinite(status);
+  if (!retryable) {
     debug('Weather service responded with a failure status', status);
     showErrorState(localization, locationName);
     // No `fallback`: nothing stale was shown, so keep this out of offlineFallbacks.
@@ -303,19 +481,115 @@ function handleWeatherFailure(error, { localization, language, unit, locationKey
   scheduleOnlineRetry();
   return applyOfflineFallback(localization, language, unit, {
     errorType: isNavigatorOffline() ? 'offline' : errorType,
+    errorCode: String(Number.isFinite(status) ? status : (error?.code ?? 'unknown')),
     locationKey,
     isNewTab
   });
 }
 
+/** One page can receive several settings/storage events together; only one refresh may run. */
+let refreshWeatherPromise = null;
+let queuedRefreshOptions = null;
+
+function queueRefresh(options) {
+  const queued = { ...options, isNewTab: false };
+  // A user/settings refresh takes precedence over opportunistic background work.
+  if (!queuedRefreshOptions || queuedRefreshOptions.background === true || queued.background !== true) {
+    queuedRefreshOptions = queued;
+  }
+}
+
+/**
+ * A user refresh abandons a background or refinement pass instead of queuing behind it.
+ * Bumping the generation fails the abandoned pass's next check, so it never renders or
+ * writes the cache.
+ */
+let refreshGeneration = 0;
+let activeRefresh = null;
+
+function isRefreshPassCurrent(generation) {
+  return generation === null || generation === refreshGeneration;
+}
+
+function supersedeActiveRefresh() {
+  if (!activeRefresh?.preemptible) {
+    return false;
+  }
+
+  debug('Abandoning background weather work for a user refresh');
+  refreshGeneration += 1;
+  activeRefresh.release();
+  activeRefresh = null;
+  return true;
+}
+
+/** Called once a foreground pass has rendered; only optional refinement is left. */
+function allowRefreshPreemption(generation) {
+  if (activeRefresh?.generation !== generation) {
+    return;
+  }
+
+  activeRefresh.preemptible = true;
+  if (queuedRefreshOptions && queuedRefreshOptions.background !== true) {
+    supersedeActiveRefresh();
+  }
+}
+
+function refreshWeather(options = {}) {
+  if (refreshWeatherPromise) {
+    // A settings-triggered render must eventually use the new setting even if the old
+    // render is already awaiting the network. Several changes collapse into one pass.
+    if (options.isNewTab === false) {
+      queueRefresh(options);
+      if (options.background !== true) {
+        supersedeActiveRefresh();
+      }
+    }
+    return refreshWeatherPromise;
+  }
+
+  const request = (async () => {
+    let nextOptions = options;
+    while (nextOptions) {
+      queuedRefreshOptions = null;
+      refreshGeneration += 1;
+      const generation = refreshGeneration;
+      const superseded = new Promise((resolve) => {
+        activeRefresh = { generation, preemptible: nextOptions.background === true, release: resolve };
+      });
+      const pass = performWeatherRefresh({ ...nextOptions, generation });
+      // An abandoned pass still settles later; nothing awaits it then.
+      pass.catch(() => {});
+      try {
+        await Promise.race([pass, superseded]);
+      } finally {
+        if (activeRefresh?.generation === generation) {
+          activeRefresh = null;
+        }
+      }
+      nextOptions = queuedRefreshOptions;
+    }
+  })().finally(() => {
+    refreshWeatherPromise = null;
+    queuedRefreshOptions = null;
+    activeRefresh = null;
+  });
+  refreshWeatherPromise = request;
+  return request;
+}
+
 /** `isNewTab` is false when the page re-renders itself (settings change, unit toggle, online retry). */
-async function refreshWeather({ isNewTab = true } = {}) {
+async function performWeatherRefresh({
+  isNewTab = true,
+  background = false,
+  cachedWeather = null,
+  generation = null
+} = {}) {
   const preferredLanguage = getPreferredLanguage();
   const unit = getPreferredUnit();
   const manualLocation = getManualLocation();
-  const manualLocationKey = manualLocation ? buildManualLocationKey(manualLocation) : null;
-  const usingManualLocation = Boolean(manualLocation && manualLocationKey && manualLocationKey !== 'manual:invalid');
-  const locationKey = usingManualLocation ? manualLocationKey : 'auto';
+  const locationKey = currentLocationKey();
+  const usingManualLocation = locationKey !== 'auto';
   const manualLocationName = usingManualLocation
     ? (manualLocation.displayName || manualLocation.name || null)
     : null;
@@ -323,28 +597,60 @@ async function refreshWeather({ isNewTab = true } = {}) {
   const localization = await loadLocalization(preferredLanguage);
   const language = localization.language;
 
-  debug('Initialising extension', { preferredLanguage, resolvedLanguage: language, unit, manualLocation, locationKey });
+  debug('Initialising extension', { resolvedLanguage: language, unit, locationMode: usingManualLocation ? 'manual' : 'auto' });
   if (isNewTab) {
     recordTabOpen();
   }
 
   initPassport(localization);
 
-  const cached = readWeatherCache({ language, unit, locationKey });
-  if (cached) {
-    debug('Using cached weather data', cached);
+  const cached = background
+    ? cachedWeather
+    : readWeatherCache({ language, unit, locationKey });
+  if (!background && cached) {
+    debug('Using cached weather data');
     recordRenderOutcome(isNewTab, 'cache_hit', {
       planetId: cached.planetId,
       planet: cached.planetName,
       timeOfDay: cached.timeOfDay
     });
     applyWeatherToUi(cached, localization);
+
+    // Cache-first keeps a new tab instant. Automatic locations are re-checked in the
+    // background to catch travel; otherwise only a stale reading is re-fetched early.
+    if (!usingManualLocation || isStaleWeatherDue(cached)) {
+      refreshWeather({ isNewTab: false, background: true, cachedWeather: cached });
+    }
     return;
   }
 
-  debug('No cached weather data available; showing loading state');
+  // A real new tab honours the shared backoff and goes straight to the last-known
+  // reading. Settings changes and the online retry are user-driven and still try.
+  if (isNewTab && !background && isBackendBackingOff()) {
+    debug('Backend asked clients to wait; using the last-known reading');
+    handleWeatherFailure(
+      new BackendRequestError('Weather service asked clients to wait', { code: 'backoff', retryable: true }),
+      {
+        localization,
+        language,
+        unit,
+        locationKey,
+        locationName: manualLocationName,
+        errorType: usingManualLocation ? 'manual_fetch' : 'auto_fetch',
+        isNewTab
+      }
+    );
+    return;
+  }
+
+  debug(background ? 'Validating cached weather in the background' : 'No cached weather data available; showing loading state');
+  // With a reading on screen the hyperspace wrapper is hidden, so clear the reading instead.
+  const quietLoad = !isNewTab && hasRenderedWeather();
+  const minimumLoadingMs = quietLoad ? 0 : HYPERSPACE_MIN_MS;
   const loadingStartedAt = Date.now();
-  showLoadingState(localization, manualLocationName);
+  if (!background) {
+    showLoadingState(localization, manualLocationName, { quiet: quietLoad });
+  }
 
   // Fetch even when navigator.onLine is false: it reads false on VPN and virtual
   // adapters, which stranded those users on a random planet that re-rolled every tab.
@@ -357,23 +663,50 @@ async function refreshWeather({ isNewTab = true } = {}) {
     locationName: manualLocationName,
     isNewTab
   };
+  const backgroundContext = {
+    preferredLanguage,
+    unit,
+    locationKey,
+    expectedViewModel: background ? cached : null,
+    generation
+  };
 
   if (usingManualLocation && manualLocation) {
+    if (background
+      && ((cached?.locationKey === locationKey && !isStaleWeatherDue(cached)) || isBackendBackingOff())) {
+      return;
+    }
+
     try {
-      const weather = await fetchWeather(manualLocation.lat, manualLocation.lon);
-      debug('Weather payload received (manual location)', weather);
+      const weatherResponse = await fetchWeather(manualLocation.lat, manualLocation.lon);
 
       const viewModel = buildViewModel({
-        weather,
+        weather: weatherResponse.weather,
+        observedAt: weatherResponse.observedAt,
+        freshUntil: weatherResponse.freshUntil,
+        stale: weatherResponse.stale,
         localization,
         language,
         unit,
         locationKey,
-        fallbackLocationName: manualLocation.displayName || manualLocation.name || ''
+        fallbackLocationName: manualLocation.displayName
+          || manualLocation.name
+          || formatDisplayName(
+            weatherResponse.location?.name,
+            weatherResponse.location?.state,
+            weatherResponse.location?.country
+          )
+          || ''
       });
 
-      debug('Constructed view model (manual location)', viewModel);
-      await waitForMinimumHyperspace(loadingStartedAt);
+      debug('Constructed view model for manual location');
+      if (!background) {
+        await waitForMinimumHyperspace(loadingStartedAt, minimumLoadingMs);
+      }
+      if (background && !isRefreshContextCurrent(backgroundContext)) {
+        debug('Discarding superseded background manual-weather result');
+        return;
+      }
       applyWeatherToUi(viewModel, localization);
       persistSuccessfulWeather(viewModel, localization);
       recordRenderOutcome(isNewTab, 'loaded', {
@@ -382,8 +715,17 @@ async function refreshWeather({ isNewTab = true } = {}) {
         timeOfDay: viewModel.timeOfDay
       });
     } catch (error) {
+      if (background) {
+        if (!isRefreshPassCurrent(generation)) {
+          return;
+        }
+        debug('Background manual-weather refresh failed; keeping cached weather', error?.code ?? 'unknown');
+        recordError({ errorType: 'background_manual_fetch', errorCode: String(error?.status ?? error?.code ?? 'unknown') });
+        scheduleOnlineRetry();
+        return;
+      }
       console.error('Unable to refresh weather data for manual location', error);
-      await waitForMinimumHyperspace(loadingStartedAt);
+      await waitForMinimumHyperspace(loadingStartedAt, minimumLoadingMs);
       handleWeatherFailure(error, { ...failureContext, errorType: 'manual_fetch' });
     }
 
@@ -391,32 +733,62 @@ async function refreshWeather({ isNewTab = true } = {}) {
   }
 
   try {
-    const position = await resolveLocation(localization);
-    debug('Geolocation resolved', position);
-    const weather = await fetchWeather(position.coords.latitude, position.coords.longitude);
-    debug('Weather payload received', weather);
+    const position = background
+      ? await requestGeolocation(BACKGROUND_GEOLOCATION_OPTIONS)
+      : await resolveLocation(localization);
+    debug('Geolocation resolved');
+    if (background && !isRefreshContextCurrent(backgroundContext)) {
+      debug('Discarding a superseded background location check');
+      return;
+    }
+    const weatherLocation = buildWeatherLocation(position, {
+      highAccuracyCheckedAt: cached?.weatherLocation?.highAccuracyCheckedAt
+    });
 
-    let fallbackLocationName = '';
-    try {
-      const details = await fetchLocationDetails(position.coords.latitude, position.coords.longitude);
-      if (details) {
-        fallbackLocationName = formatDisplayName(details.name ?? '', details.state ?? '', details.country ?? '');
+    // Readings cached before 2.5 have no cell; adopt the current one instead of refetching.
+    const cachedCell = cached?.weatherLocation?.cell ?? null;
+    if (background
+      && cached?.locationKey === 'auto'
+      && (cachedCell === null
+        || cachedCell === weatherLocation.cell
+        || isNearWeatherCell(position, cachedCell))
+      && !isStaleWeatherDue(cached)) {
+      debug('Cached weather still matches the current location');
+      const current = cachedCell === null
+        ? persistWeatherLocationMetadata(cached, weatherLocation)
+        : cached;
+      if (shouldRefinePosition(position, current.weatherLocation)) {
+        await refineAutomaticWeather(position, current, {
+          localization,
+          language,
+          unit,
+          preferredLanguage,
+          generation
+        });
       }
-    } catch (locationError) {
-      debug('Reverse geocoding lookup failed', locationError);
+      return;
     }
 
-    const viewModel = buildViewModel({
-      weather,
+    if (background && isBackendBackingOff()) {
+      debug('Backend asked clients to wait; keeping cached weather');
+      return;
+    }
+
+    const viewModel = await fetchAutomaticWeatherViewModel(position, {
       localization,
       language,
       unit,
-      locationKey: 'auto',
-      fallbackLocationName
+      previousWeatherLocation: cached?.weatherLocation
     });
 
-    debug('Constructed view model', viewModel);
-    await waitForMinimumHyperspace(loadingStartedAt);
+    debug('Constructed view model');
+    if (!background) {
+      await waitForMinimumHyperspace(loadingStartedAt, minimumLoadingMs);
+    }
+    if (background && !isRefreshContextCurrent(backgroundContext)) {
+      debug('Discarding superseded background location/weather result');
+      return;
+    }
     applyWeatherToUi(viewModel, localization);
     persistSuccessfulWeather(viewModel, localization);
     recordRenderOutcome(isNewTab, 'loaded', {
@@ -424,9 +796,37 @@ async function refreshWeather({ isNewTab = true } = {}) {
       planet: viewModel.planetName,
       timeOfDay: viewModel.timeOfDay
     });
+
+    // A poor fast fix gets one GPS-quality refinement after render. Its failure must
+    // not reach handleWeatherFailure and repaint the rendered weather as offline.
+    allowRefreshPreemption(generation);
+    try {
+      await refineAutomaticWeather(position, viewModel, {
+        localization,
+        language,
+        unit,
+        preferredLanguage,
+        generation
+      });
+    } catch (error) {
+      if (!isRefreshPassCurrent(generation)) {
+        return;
+      }
+      debug('Location refinement failed; keeping the rendered weather', error?.code ?? 'unknown');
+      recordError({ errorType: 'refine_auto_fetch', errorCode: String(error?.status ?? error?.code ?? 'unknown') });
+    }
   } catch (error) {
+    if (background) {
+      if (!isRefreshPassCurrent(generation)) {
+        return;
+      }
+      debug('Background location/weather validation failed; keeping cached weather', error?.code ?? 'unknown');
+      recordError({ errorType: 'background_auto_fetch', errorCode: String(error?.status ?? error?.code ?? 'unknown') });
+      scheduleOnlineRetry();
+      return;
+    }
     console.error('Unable to refresh weather data', error);
-    await waitForMinimumHyperspace(loadingStartedAt);
+    await waitForMinimumHyperspace(loadingStartedAt, minimumLoadingMs);
     handleWeatherFailure(error, { ...failureContext, errorType: 'auto_fetch' });
   }
 }
@@ -442,7 +842,21 @@ if (SHOULD_INIT) {
   });
 }
 
-function showLoadingState(localization, locationName = null) {
+/** `quiet` replaces a reading already on screen, where the hyperspace wrapper is hidden. */
+function showLoadingState(localization, locationName = null, { quiet = false } = {}) {
+  if (quiet) {
+    ['planet', 'center1Text', 'center3Text', 'message', 'description'].forEach((id) => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.innerText = '';
+      }
+    });
+    // Nothing on screen is a reading until this pass renders one.
+    currentViewModel = null;
+  } else {
+    ensureHyperspaceVideo();
+  }
+
   const loadingElement = document.getElementById('loading');
   if (loadingElement) {
     loadingElement.innerText = '';
@@ -450,6 +864,37 @@ function showLoadingState(localization, locationName = null) {
 
   updateLocationLabel(localization, locationName);
   updateLastUpdated(localization.getMessage('last_updated_placeholder'));
+}
+
+/**
+ * Keep the 5 MB animation off the critical path for the common local-cache hit.
+ * The empty wrapper is present in index.html so the layout remains stable.
+ */
+function ensureHyperspaceVideo() {
+  const wrapper = document.getElementById('test');
+  if (!wrapper) {
+    return null;
+  }
+
+  const existing = wrapper.querySelector('video');
+  if (existing) {
+    return existing;
+  }
+
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.loop = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+
+  const source = document.createElement('source');
+  source.setAttribute('src', HYPERSPACE_VIDEO_PATH);
+  source.setAttribute('type', 'video/mp4');
+  video.appendChild(source);
+  wrapper.appendChild(video);
+
+  return video;
 }
 
 function applyWeatherToUi(viewModel, localization) {
@@ -481,25 +926,7 @@ function applyWeatherToUi(viewModel, localization) {
     tempC
   } = viewModel;
 
-  debug('Applying weather to UI', {
-    planetClass,
-    planetName,
-    planetId,
-    headingPrefix,
-    headingSuffix,
-    message,
-    description,
-    lastUpdated,
-    locationName,
-    locationKey,
-    language,
-    unit,
-    timeOfDay,
-    timeOfDayLabel,
-    matchReason,
-    tempF,
-    tempC
-  });
+  debug('Applying weather to UI', { planetId, timeOfDay });
 
   hideElementById('test');
 
@@ -518,6 +945,10 @@ function applyWeatherToUi(viewModel, localization) {
     console.warn('Unable to update the passport for this render', error);
   }
   clearLoadingText();
+}
+
+function hasRenderedWeather() {
+  return document.getElementById('test')?.style.display === 'none';
 }
 
 function hideElementById(id) {
@@ -580,7 +1011,7 @@ async function resolveLocation(localization) {
 
       try {
         const retryPosition = await requestGeolocation();
-        debug('Geolocation retry succeeded', retryPosition);
+        debug('Geolocation retry succeeded');
         resolve(retryPosition);
       } catch (retryError) {
         debug('Geolocation retry failed', retryError);
@@ -590,42 +1021,253 @@ async function resolveLocation(localization) {
   });
 }
 
-function requestGeolocation() {
+function requestGeolocation(options = GEOLOCATION_OPTIONS) {
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, GEOLOCATION_OPTIONS);
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
   });
 }
 
 async function fetchWeather(latitude, longitude) {
-  const url = new URL(WEATHER_ENDPOINT);
-  url.searchParams.set('lat', latitude);
-  url.searchParams.set('lon', longitude);
-  url.searchParams.set('appid', API_KEY);
-  url.searchParams.set('units', 'imperial');
-
   recordWeatherCall();
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    // Status must survive to the catch: it separates a service failure from lost connectivity.
-    const error = new Error(`Weather request failed with status ${response.status}`);
-    error.status = response.status;
+  try {
+    const response = await getWeather(latitude, longitude);
+    noteBackendSuccess();
+    return response;
+  } catch (error) {
+    noteBackendFailure(error);
     throw error;
   }
-
-  return response.json();
 }
 
-function buildViewModel({ weather, localization, language, unit, locationKey, fallbackLocationName }) {
+async function fetchAutomaticWeatherViewModel(position, {
+  localization,
+  language,
+  unit,
+  previousWeatherLocation = null,
+  highAccuracyCheckedAt = null
+}) {
+  const { latitude, longitude } = position.coords;
+  // Run in parallel. Place details are optional: the weather response carries a
+  // city/country fallback.
+  const [weatherResponse, details] = await Promise.all([
+    fetchWeather(latitude, longitude),
+    fetchLocationDetails(latitude, longitude).catch((locationError) => {
+      debug('Reverse geocoding lookup failed', locationError?.code ?? 'unknown');
+      return null;
+    })
+  ]);
+
+  const fallbackLocationName = details
+    ? formatDisplayName(details.name ?? '', details.state ?? '', details.country ?? '')
+    : formatDisplayName(
+      weatherResponse.location?.name,
+      weatherResponse.location?.state,
+      weatherResponse.location?.country
+    );
+
+  const cell = buildWeatherCoordinateKey(latitude, longitude);
+  // A previous high-accuracy check only carries over while the cell is unchanged.
+  const inheritedHighAccuracyCheck = previousWeatherLocation?.cell === cell
+    ? previousWeatherLocation.highAccuracyCheckedAt
+    : null;
+
+  return buildViewModel({
+    weather: weatherResponse.weather,
+    observedAt: weatherResponse.observedAt,
+    freshUntil: weatherResponse.freshUntil,
+    stale: weatherResponse.stale,
+    localization,
+    language,
+    unit,
+    locationKey: 'auto',
+    fallbackLocationName,
+    weatherLocation: buildWeatherLocation(position, {
+      highAccuracyCheckedAt: highAccuracyCheckedAt ?? inheritedHighAccuracyCheck
+    })
+  });
+}
+
+function persistWeatherLocationMetadata(viewModel, weatherLocation) {
+  if (currentViewModel !== viewModel) {
+    return viewModel;
+  }
+
+  const updated = { ...viewModel, weatherLocation };
+  currentViewModel = updated;
+  safeStorageWrite('weather cache refinement metadata', () => writeWeatherCache(updated));
+  return updated;
+}
+
+async function refineAutomaticWeather(initialPosition, initialViewModel, {
+  localization,
+  language,
+  unit,
+  preferredLanguage,
+  generation = null
+}) {
+  let activePosition = initialPosition;
+  let activeViewModel = initialViewModel;
+  let freshStandardFailed = false;
+  const contextIsCurrent = (viewModel) => isRefreshContextCurrent({
+    preferredLanguage,
+    unit,
+    locationKey: 'auto',
+    expectedViewModel: viewModel,
+    generation
+  });
+  if (!contextIsCurrent(activeViewModel)) {
+    return activeViewModel;
+  }
+
+  // The foreground may use a browser-cached position. Once weather is visible,
+  // replace one older than two minutes before deciding whether to refine.
+  if (isPositionStale(activePosition)) {
+    try {
+      const freshPosition = await requestGeolocation(BACKGROUND_GEOLOCATION_OPTIONS);
+      if (!contextIsCurrent(activeViewModel)) {
+        return activeViewModel;
+      }
+
+      const freshWeatherLocation = buildWeatherLocation(freshPosition, {
+        highAccuracyCheckedAt: activeViewModel.weatherLocation?.highAccuracyCheckedAt
+      });
+      const activeCell = activeViewModel.weatherLocation?.cell;
+      if (freshWeatherLocation.cell === activeCell || isNearWeatherCell(freshPosition, activeCell)) {
+        // The cell stays anchored to the reading, so jitter back across the edge is a no-op too.
+        activeViewModel = persistWeatherLocationMetadata(activeViewModel, {
+          ...freshWeatherLocation,
+          cell: activeCell
+        });
+      } else {
+        const freshViewModel = await fetchAutomaticWeatherViewModel(freshPosition, {
+          localization,
+          language,
+          unit,
+          previousWeatherLocation: activeViewModel.weatherLocation
+        });
+        if (!contextIsCurrent(activeViewModel)) {
+          return activeViewModel;
+        }
+        debug('Applying a fresh standard-location weather result');
+        applyWeatherToUi(freshViewModel, localization);
+        persistSuccessfulWeather(freshViewModel, localization);
+        activeViewModel = freshViewModel;
+      }
+      activePosition = freshPosition;
+    } catch (error) {
+      freshStandardFailed = true;
+      debug('Fresh standard-location background check unavailable', error?.code ?? 'unknown');
+    }
+  }
+
+  if (!contextIsCurrent(activeViewModel)) {
+    return activeViewModel;
+  }
+
+  if (!shouldRefinePosition(
+    activePosition,
+    activeViewModel.weatherLocation,
+    Date.now(),
+    freshStandardFailed
+  )) {
+    return activeViewModel;
+  }
+
+  const checkedAt = new Date().toISOString();
+  let refinedPosition;
+  try {
+    refinedPosition = await requestGeolocation(HIGH_ACCURACY_GEOLOCATION_OPTIONS);
+  } catch (error) {
+    debug('High-accuracy background refinement unavailable', error?.code ?? 'unknown');
+    if (!contextIsCurrent(activeViewModel)) {
+      return activeViewModel;
+    }
+    return persistWeatherLocationMetadata(activeViewModel, {
+      ...activeViewModel.weatherLocation,
+      highAccuracyCheckedAt: checkedAt
+    });
+  }
+
+  if (!contextIsCurrent(activeViewModel)) {
+    return activeViewModel;
+  }
+
+  if (!isMateriallyBetterPosition(activePosition, refinedPosition)) {
+    debug('High-accuracy result did not materially improve the position');
+    return persistWeatherLocationMetadata(activeViewModel, {
+      ...activeViewModel.weatherLocation,
+      highAccuracyCheckedAt: checkedAt
+    });
+  }
+
+  const refinedWeatherLocation = buildWeatherLocation(refinedPosition, {
+    highAccuracyCheckedAt: checkedAt
+  });
+  if (refinedWeatherLocation.cell === activeViewModel.weatherLocation?.cell) {
+    debug('High-accuracy result stayed inside the current weather cell');
+    return persistWeatherLocationMetadata(activeViewModel, refinedWeatherLocation);
+  }
+
+  try {
+    const refinedViewModel = await fetchAutomaticWeatherViewModel(refinedPosition, {
+      localization,
+      language,
+      unit,
+      highAccuracyCheckedAt: checkedAt
+    });
+    if (!contextIsCurrent(activeViewModel)) {
+      return activeViewModel;
+    }
+    debug('Applying refined weather location');
+    applyWeatherToUi(refinedViewModel, localization);
+    persistSuccessfulWeather(refinedViewModel, localization);
+    return refinedViewModel;
+  } catch (error) {
+    debug('Refined weather request failed; keeping the fast result', error?.code ?? 'unknown');
+    if (!contextIsCurrent(activeViewModel)) {
+      return activeViewModel;
+    }
+    return persistWeatherLocationMetadata(activeViewModel, {
+      ...activeViewModel.weatherLocation,
+      highAccuracyCheckedAt: checkedAt
+    });
+  }
+}
+
+function buildViewModel({
+  weather,
+  observedAt = null,
+  freshUntil = null,
+  stale = false,
+  localization,
+  language,
+  unit,
+  locationKey,
+  fallbackLocationName,
+  weatherLocation = null
+}) {
   const now = new Date();
-  const weatherMain = weather.weather?.[0]?.main ?? 'Clear';
+  const temperature = weather?.main?.temp;
+  const weatherMain = weather?.weather?.[0]?.main;
+  if (typeof temperature !== 'number' || !Number.isFinite(temperature)) {
+    throw new Error('Weather payload has no valid temperature');
+  }
+  if (typeof weatherMain !== 'string' || !weatherMain.trim()) {
+    throw new Error('Weather payload has no valid condition');
+  }
+
   const weatherDescription = weather.weather?.[0]?.description ?? '';
-  const tempF = Math.round(weather.main?.temp ?? 0);
+  const tempF = Math.round(temperature);
   const tempC = Math.round((((tempF - 32) * 5) / 9) * 2) / 2;
-  const humidity = weather.main?.humidity ?? 0;
-  const windSpeedMph = weather.wind?.speed ?? 0;
+  const humidity = Number.isFinite(weather.main?.humidity) ? weather.main.humidity : 0;
+  const windSpeedMph = Number.isFinite(weather.wind?.speed) ? weather.wind.speed : 0;
   const sunTimes = extractSunTimes(weather);
   const timeOfDay = resolveTimeOfDay(now, localization, sunTimes);
   const locationName = resolveLocationName(weather, fallbackLocationName);
+  const observationTime = observedAt && Number.isFinite(Date.parse(observedAt))
+    ? new Date(observedAt)
+    : now;
+  const parsedFreshUntil = parseFiniteTimestamp(freshUntil);
 
   const matchContext = {
     tempF,
@@ -661,10 +1303,16 @@ function buildViewModel({ weather, localization, language, unit, locationKey, fa
     headingSuffix: localization.getMessage('center_heading_suffix') || 'OUTSIDE',
     message,
     description,
-    lastUpdated: now.toISOString(),
-    lastUpdatedLabel: formatLastUpdated(now, localization),
+    lastUpdated: observationTime.toISOString(),
+    lastUpdatedLabel: formatLastUpdated(observationTime, localization),
+    // The fetch time travels with the reading, so re-persisting it (unit toggle,
+    // location metadata) cannot hand an old reading a fresh one-hour TTL.
+    cachedAt: now.toISOString(),
+    ...(parsedFreshUntil !== null ? { freshUntil: new Date(parsedFreshUntil).toISOString() } : {}),
+    ...(stale === true ? { stale: true } : {}),
     locationKey,
     locationName,
+    ...(weatherLocation ? { weatherLocation } : {}),
     language,
     unit,
     tempF,
@@ -746,7 +1394,7 @@ async function handleTempToggle() {
 
       // Last-known moves either way, or the next offline load re-renders the temperature
       // in the old unit. Offline presentation is rebuilt per render, so it is dropped.
-      const { offline, lastUpdatedLabel, ...lastKnown } = rebuilt;
+      const { offline, lastUpdatedLabel, weatherLocation, ...lastKnown } = rebuilt;
       safeStorageWrite('last known weather', () => writeLastKnownWeather(lastKnown));
       return;
     }
@@ -769,7 +1417,7 @@ function selectPlanetRule(context) {
   return matchedRule;
 }
 
-/** Sunrise/sunset as unix UTC seconds, from an OWM payload or a persisted view model. */
+/** Sunrise/sunset as unix UTC seconds, from a backend weather payload or a persisted view model. */
 function extractSunTimes(source) {
   if (!source || typeof source !== 'object') {
     return null;
@@ -1118,48 +1766,13 @@ function formatDisplayName(name, state, country) {
   return parts.join(', ');
 }
 
-/**
- * Place names do not change, so the long-lived cache halves the API calls on a cold
- * auto-location load.
- */
-async function fetchLocationDetails(latitude, longitude) {
-  const cached = readGeocodeCache(latitude, longitude);
-  if (cached) {
-    debug('Reverse geocoding served from cache', cached.details);
-    return cached.details;
-  }
-
-  if (typeof API_KEY === 'undefined') {
-    throw new Error('API key is not available');
-  }
-
-  const url = new URL(GEOCODING_REVERSE_ENDPOINT);
-  url.searchParams.set('lat', latitude);
-  url.searchParams.set('lon', longitude);
-  url.searchParams.set('limit', '1');
-  url.searchParams.set('appid', API_KEY);
-
-  recordGeocodeCall();
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    throw new Error(`Reverse geocoding failed with status ${response.status}`);
-  }
-
-  const data = await response.json();
-  const details = Array.isArray(data) && data.length > 0 ? data[0] : null;
-
-  // Empty lookups are cached too (shorter TTL) so a nameless coordinate stops re-requesting.
-  writeGeocodeCache(latitude, longitude, details);
-
-  return details;
-}
-
 export {
   applyOfflineFallback,
   applyWeatherToUi,
   buildManualLocationKey,
   buildOfflineRandomViewModel,
   buildViewModel,
+  ensureHyperspaceVideo,
   explainMatch,
   extractSunTimes,
   fetchLocationDetails,

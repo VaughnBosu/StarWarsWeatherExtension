@@ -1,6 +1,5 @@
-export const WEATHER_ENDPOINT = 'https://api.openweathermap.org/data/2.5/weather';
-export const GEOCODING_DIRECT_ENDPOINT = 'https://api.openweathermap.org/geo/1.0/direct';
-export const GEOCODING_REVERSE_ENDPOINT = 'https://api.openweathermap.org/geo/1.0/reverse';
+/** Abort a backend request before a stalled connection strands a new-tab render. */
+export const BACKEND_REQUEST_TIMEOUT_MS = 8000;
 
 export const GEOLOCATION_OPTIONS = Object.freeze({
   enableHighAccuracy: false,
@@ -8,7 +7,54 @@ export const GEOLOCATION_OPTIONS = Object.freeze({
   maximumAge: 600000
 });
 
+export const GEOLOCATION_POSITION_MAX_AGE_MS = 2 * 60 * 1000;
+
+/**
+ * Standard fix used only after content is visible, so travel is detected promptly.
+ * A position younger than the staleness cutoff is reused rather than forcing a
+ * network positioning request on every new tab.
+ */
+export const BACKGROUND_GEOLOCATION_OPTIONS = Object.freeze({
+  enableHighAccuracy: false,
+  timeout: 5000,
+  maximumAge: GEOLOCATION_POSITION_MAX_AGE_MS
+});
+
+/**
+ * A slow GPS-quality fix must never delay the new-tab render. When the fast position
+ * reports a wide uncertainty radius, one best-effort refinement may run afterward.
+ */
+export const HIGH_ACCURACY_GEOLOCATION_OPTIONS = Object.freeze({
+  enableHighAccuracy: true,
+  timeout: 8000,
+  maximumAge: 0
+});
+
+export const GEOLOCATION_REFINEMENT_THRESHOLD_METERS = 250;
+export const GEOLOCATION_REFINEMENT_COOLDOWN_MS = 60 * 60 * 1000;
+
+/** About a 1.1 km cell at the equator. Must match backend/src/coordinates.js. */
+export const WEATHER_COORDINATE_PRECISION = 2;
+
+/**
+ * How far past the cached cell's edge a position must land to count as travel,
+ * scaled by the fix's reported accuracy within these bounds.
+ */
+export const TRAVEL_MARGIN_MIN_METERS = 500;
+export const TRAVEL_MARGIN_MAX_METERS = 2000;
+
 export const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/** How long a reading the backend served stale is shown before a background re-check. */
+export const STALE_WEATHER_RETRY_MS = 15 * 60 * 1000;
+
+/**
+ * Shared wait after a retryable backend failure (429, 5xx, timeout, network), during
+ * which new tabs use the last-known reading. Retry-After is honoured within these bounds.
+ */
+export const BACKEND_BACKOFF_DEFAULT_MS = 2 * 60 * 1000;
+export const BACKEND_BACKOFF_MIN_MS = 30 * 1000;
+export const BACKEND_BACKOFF_MAX_MS = 30 * 60 * 1000;
 
 /** A coordinate's city/state/country effectively never changes, hence the long TTL. */
 export const GEOCODE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days

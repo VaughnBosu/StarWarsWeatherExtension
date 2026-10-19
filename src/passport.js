@@ -32,10 +32,7 @@ function planetDayArt(planet) {
   return planet.backgrounds?.day || planet.id;
 }
 
-/**
- * Stamp art reuses the full-screen planet backgrounds (~22 MB, 9 MB of it Bespin)
- * in ~100px tiles; decoding all thirteen in one frame froze the tab.
- */
+/** Decode stamp thumbnails serially so opening the grid stays smooth on low-end devices. */
 const STAMP_ART_GAP_MS = 32;
 const STAMP_ART_MARGIN = '96px';
 // a request that fires neither load nor error would hold the lock forever
@@ -146,7 +143,7 @@ function createStampArt(planet) {
   art.setAttribute('loading', 'lazy');
   art.setAttribute('decoding', 'async');
   // src stays empty until the tile is on screen and its turn comes up
-  art.dataset.art = `/public/assets/${planetDayArt(planet)}.webp`;
+  art.dataset.art = `/public/assets/passport/${planetDayArt(planet)}.webp`;
   return art;
 }
 

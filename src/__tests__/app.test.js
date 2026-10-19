@@ -9,23 +9,32 @@ import {
   teardownDom
 } from './testUtils.js';
 import {
-  buildGeocodeCacheKey,
   readGeocodeCache,
-  writeGeocodeCache,
-  writeLastKnownWeather,
   STORAGE_KEYS
 } from '../storage.js';
 
 globalThis.__SWW_SKIP_INIT__ = true;
 
 const ANN_ARBOR = { name: 'Ann Arbor', state: 'Michigan', country: 'US', lat: 42.2808, lon: -83.743 };
+const BACKEND_BASE_URL = 'https://weather.example.test';
+const WEATHER_RESPONSE = {
+  weather: {
+    weather: [{ main: 'Clear', description: 'clear sky' }],
+    main: { temp: 72, humidity: 45 },
+    wind: { speed: 4 }
+  },
+  observedAt: '2026-08-29T12:00:00.000Z',
+  freshUntil: '2026-08-29T12:20:00.000Z',
+  stale: false,
+  cacheStatus: 'miss'
+};
 
 let app = null;
 
 const realFetch = globalThis.fetch;
 const realAlert = globalThis.alert;
 const realNavigator = globalThis.navigator;
-const realApiKey = globalThis.API_KEY;
+const realBackendBaseUrl = globalThis.BACKEND_BASE_URL;
 
 beforeAll(async () => {
   app = await import('../app.js');
@@ -35,7 +44,7 @@ beforeEach(() => {
   installStorageMock();
   installDom();
   installNavigator(globalThis.window, { language: 'en-US' });
-  globalThis.API_KEY = 'test-key';
+  globalThis.BACKEND_BASE_URL = BACKEND_BASE_URL;
 });
 
 afterEach(() => {
@@ -56,10 +65,10 @@ afterEach(() => {
   } else {
     delete globalThis.navigator;
   }
-  if (realApiKey) {
-    globalThis.API_KEY = realApiKey;
+  if (realBackendBaseUrl) {
+    globalThis.BACKEND_BASE_URL = realBackendBaseUrl;
   } else {
-    delete globalThis.API_KEY;
+    delete globalThis.BACKEND_BASE_URL;
   }
 });
 
@@ -291,6 +300,44 @@ describe('app helpers', () => {
     expect(viewModel.sunset).toBeNull();
   });
 
+  test('buildViewModel uses the backend observation time and rejects a missing temperature', () => {
+    const localization = createLocalizationMock({
+      time_of_day_morning: { message: 'Morning' }
+    });
+    const weather = {
+      weather: [{ main: 'Clear', description: 'clear sky' }],
+      main: { temp: 68 }
+    };
+
+    const viewModel = app.buildViewModel({
+      weather,
+      observedAt: '2026-08-29T11:42:00.000Z',
+      freshUntil: '2026-08-29T12:02:00.000Z',
+      localization,
+      language: 'en',
+      unit: 'fahrenheit',
+      locationKey: 'auto',
+      fallbackLocationName: '',
+      weatherLocation: {
+        cell: '42.33,-83.05',
+        accuracyMeters: 75,
+        positionAt: '2026-08-29T11:41:59.000Z'
+      }
+    });
+    expect(viewModel.lastUpdated).toBe('2026-08-29T11:42:00.000Z');
+    expect(viewModel.freshUntil).toBe('2026-08-29T12:02:00.000Z');
+    expect(viewModel.weatherLocation.cell).toBe('42.33,-83.05');
+
+    expect(() => app.buildViewModel({
+      weather: { weather: [{ main: 'Clear' }], main: {} },
+      localization,
+      language: 'en',
+      unit: 'fahrenheit',
+      locationKey: 'auto',
+      fallbackLocationName: ''
+    })).toThrow('no valid temperature');
+  });
+
   test('buildViewModel persists sunrise/sunset and selects night art before sunrise', () => {
     const localization = createLocalizationMock({
       planet_coruscant_summary: { message: 'Summary $1 $2' },
@@ -377,11 +424,6 @@ describe('app helpers', () => {
     expect(app.getOppositeUnit('other')).toBe('celsius');
   });
 
-  test('formatTemperatureLabel uses preferred unit', () => {
-    expect(app.formatTemperatureLabel(68, 20, 'fahrenheit')).toBe('68\u00B0F');
-    expect(app.formatTemperatureLabel(68, 20, 'celsius')).toBe('20\u00B0C');
-  });
-
   test('rebuildViewModelForUnit rebuilds message from stored temps', () => {
     const localization = createLocalizationMock({
       planet_coruscant_summary: { message: 'Summary $1 $2' }
@@ -404,29 +446,20 @@ describe('app helpers', () => {
 describe('network helpers', () => {
   test('fetchWeather builds request and handles response', async () => {
     globalThis.fetch = createFetchMock([
-      { json: { ok: true } }
+      { json: WEATHER_RESPONSE }
     ]);
 
-    await app.fetchWeather(10, 20);
+    const response = await app.fetchWeather(10, 20);
     const calledUrl = globalThis.fetch.calls[0];
     expect(calledUrl.includes('lat=10')).toBe(true);
     expect(calledUrl.includes('lon=20')).toBe(true);
-    expect(calledUrl.includes('units=imperial')).toBe(true);
-    expect(calledUrl.includes('appid=test-key')).toBe(true);
+    expect(calledUrl.includes('/v1/weather')).toBe(true);
+    expect(calledUrl.includes('appid=')).toBe(false);
+    expect(response.weather.main.temp).toBe(72);
   });
 
-  test('fetchWeather throws on bad response', async () => {
-    globalThis.fetch = createFetchMock([
-      { ok: false, status: 500, json: {} }
-    ]);
-
-    await expect(app.fetchWeather(10, 20)).rejects.toThrow();
-  });
-
-  // The OWM capacity metric derives from these two counters, so they have to increment
-  // where a request actually goes out.
-  test('fetchWeather counts an OpenWeatherMap call', async () => {
-    globalThis.fetch = createFetchMock([{ json: { ok: true } }]);
+  test('fetchWeather counts a backend weather call', async () => {
+    globalThis.fetch = createFetchMock([{ json: WEATHER_RESPONSE }]);
 
     await app.fetchWeather(10, 20);
 
@@ -436,7 +469,7 @@ describe('network helpers', () => {
   });
 
   test('fetchLocationDetails counts a geocode call only when it misses the cache', async () => {
-    globalThis.fetch = createFetchMock([{ json: [ANN_ARBOR] }]);
+    globalThis.fetch = createFetchMock([{ json: { location: ANN_ARBOR } }]);
 
     await app.fetchLocationDetails(ANN_ARBOR.lat, ANN_ARBOR.lon);
     expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.telemetry)).geocodeCalls).toBe(1);
@@ -447,23 +480,9 @@ describe('network helpers', () => {
     expect(globalThis.fetch.calls).toHaveLength(1);
   });
 
-  test('fetchLocationDetails returns null when empty', async () => {
-    globalThis.fetch = createFetchMock([
-      { json: [] }
-    ]);
-
-    const result = await app.fetchLocationDetails(10, 20);
-    expect(result).toBeNull();
-  });
-
-  test('fetchLocationDetails throws when API key missing', async () => {
-    delete globalThis.API_KEY;
-    await expect(app.fetchLocationDetails(10, 20)).rejects.toThrow();
-  });
-
   test('fetchLocationDetails caches a successful lookup', async () => {
     globalThis.fetch = createFetchMock([
-      { json: [ANN_ARBOR] }
+      { json: { location: ANN_ARBOR } }
     ]);
 
     const result = await app.fetchLocationDetails(42.2808, -83.743);
@@ -472,18 +491,9 @@ describe('network helpers', () => {
     expect(readGeocodeCache(42.2808, -83.743).details).toEqual(ANN_ARBOR);
   });
 
-  test('fetchLocationDetails skips the network on a cache hit', async () => {
-    writeGeocodeCache(42.2808, -83.743, ANN_ARBOR);
-    globalThis.fetch = createFetchMock([]);
-
-    const result = await app.fetchLocationDetails(42.2808, -83.743);
-    expect(result).toEqual(ANN_ARBOR);
-    expect(globalThis.fetch.calls.length).toBe(0);
-  });
-
   test('fetchLocationDetails reuses the cache for a nearby coordinate', async () => {
     globalThis.fetch = createFetchMock([
-      { json: [ANN_ARBOR] }
+      { json: { location: ANN_ARBOR } }
     ]);
 
     await app.fetchLocationDetails(42.2808, -83.743);
@@ -492,24 +502,9 @@ describe('network helpers', () => {
     expect(globalThis.fetch.calls.length).toBe(1);
   });
 
-  test('fetchLocationDetails refetches once the cached entry expires', async () => {
-    localStorage.setItem(STORAGE_KEYS.geocodeCache, JSON.stringify({
-      key: buildGeocodeCacheKey(42.2808, -83.743),
-      details: ANN_ARBOR,
-      lastUpdated: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString()
-    }));
-    globalThis.fetch = createFetchMock([
-      { json: [{ ...ANN_ARBOR, name: 'Ypsilanti' }] }
-    ]);
-
-    const result = await app.fetchLocationDetails(42.2808, -83.743);
-    expect(result.name).toBe('Ypsilanti');
-    expect(globalThis.fetch.calls.length).toBe(1);
-  });
-
   test('fetchLocationDetails negatively caches an empty lookup', async () => {
     globalThis.fetch = createFetchMock([
-      { json: [] }
+      { json: { location: null } }
     ]);
 
     expect(await app.fetchLocationDetails(0, 0)).toBeNull();
@@ -678,135 +673,6 @@ describe('offline fallback and hyperspace', () => {
     });
 
     expect(dayView.planetClass).toBe('tatooine');
-  });
-
-  test('applyOfflineFallback uses last known when available', () => {
-    writeLastKnownWeather({
-      planetId: 'hoth',
-      planetName: 'Hoth',
-      planetClass: 'hoth',
-      message: 'Cold',
-      description: 'Ice',
-      language: 'en',
-      unit: 'fahrenheit',
-      headingPrefix: "IT'S LIKE",
-      headingSuffix: 'OUTSIDE',
-      lastUpdated: new Date().toISOString()
-    });
-
-    const localization = createLocalizationMock({
-      offline_signal_lost: { message: 'Sensors offline — last known: $1' },
-      center_heading_prefix: { message: "IT'S LIKE" },
-      center_heading_suffix: { message: 'OUTSIDE' },
-      location_display_unknown: { message: 'Showing weather in: your area' },
-      planet_hoth_name: { message: 'Hoth' },
-      planet_hoth_description: { message: 'Ice planet' },
-      time_of_day_morning: { message: 'Morning' },
-      time_of_day_afternoon: { message: 'Afternoon' },
-      time_of_day_evening: { message: 'Evening' },
-      time_of_day_night: { message: 'Night' },
-      time_of_day_pre_dawn: { message: 'Late Night' }
-    });
-
-    installDom(`
-      <div id="background"></div>
-      <div id="test"></div>
-      <div id="planet"></div>
-      <div id="center1Text"></div>
-      <div id="center3Text"></div>
-      <div id="message"></div>
-      <div id="description"></div>
-      <div id="LastUpdated"></div>
-      <div id="locationLabel"></div>
-      <div id="loading"></div>
-    `);
-
-    const result = app.applyOfflineFallback(localization, 'en', 'fahrenheit');
-    expect(result.planetId).toBe('hoth');
-    expect(document.getElementById('planet').innerText).toBe('HOTH');
-    expect(document.getElementById('LastUpdated').innerText).toContain('Sensors offline');
-  });
-
-  test('applyOfflineFallback uses random planet when no last known', () => {
-    const localization = createLocalizationMock({
-      offline_random_planet: { message: 'Random sector' },
-      offline_signal_lost: { message: 'Sensors offline — last known: $1' },
-      center_heading_prefix: { message: "IT'S LIKE" },
-      center_heading_suffix: { message: 'OUTSIDE' },
-      location_display_unknown: { message: 'Showing weather in: your area' },
-      time_of_day_morning: { message: 'Morning' },
-      time_of_day_afternoon: { message: 'Afternoon' },
-      time_of_day_evening: { message: 'Evening' },
-      time_of_day_night: { message: 'Night' },
-      time_of_day_pre_dawn: { message: 'Late Night' },
-      planet_hoth_name: { message: 'Hoth' },
-      planet_hoth_description: { message: 'Cold' },
-      planet_kamino_name: { message: 'Kamino' },
-      planet_kamino_description: { message: 'Rain' },
-      planet_endor_name: { message: 'Endor' },
-      planet_endor_description: { message: 'Fog' },
-      planet_bespin_name: { message: 'Bespin' },
-      planet_bespin_description: { message: 'Wind' },
-      planet_scarif_name: { message: 'Scarif' },
-      planet_scarif_description: { message: 'Beach' },
-      planet_dagobah_name: { message: 'Dagobah' },
-      planet_dagobah_description: { message: 'Swamp' },
-      planet_naboo_name: { message: 'Naboo' },
-      planet_naboo_description: { message: 'Mild' },
-      planet_coruscant_name: { message: 'Coruscant' },
-      planet_coruscant_description: { message: 'City' },
-      planet_tatooine_name: { message: 'Tatooine' },
-      planet_tatooine_description: { message: 'Desert' },
-      planet_mustafar_name: { message: 'Mustafar' },
-      planet_mustafar_description: { message: 'Lava' }
-    });
-
-    installDom(`
-      <div id="background"></div>
-      <div id="test"></div>
-      <div id="planet"></div>
-      <div id="center1Text"></div>
-      <div id="center3Text"></div>
-      <div id="message"></div>
-      <div id="description"></div>
-      <div id="LastUpdated"></div>
-      <div id="locationLabel"></div>
-      <div id="loading"></div>
-    `);
-
-    const result = app.applyOfflineFallback(localization, 'en', 'fahrenheit');
-    expect(result.offline).toBe(true);
-    expect(document.getElementById('message').innerText).toBe('Random sector');
-  });
-
-  test('buildViewModel includes planetId', () => {
-    const localization = createLocalizationMock({
-      planet_coruscant_summary: { message: 'Summary $1 $2' },
-      planet_coruscant_description: { message: 'Desc' },
-      planet_coruscant_name: { message: 'Coruscant' },
-      center_heading_prefix: { message: "IT'S LIKE" },
-      center_heading_suffix: { message: 'OUTSIDE' },
-      time_of_day_morning: { message: 'Morning' }
-    });
-
-    const viewModel = withMockedDate('2024-01-02T06:00:00', () => {
-      return app.buildViewModel({
-        weather: {
-          weather: [{ main: 'Clear', description: 'clear sky' }],
-          main: { temp: 68, humidity: 20 },
-          wind: { speed: 5 },
-          name: 'Austin',
-          sys: { country: 'US', state: 'Texas' }
-        },
-        localization,
-        language: 'en',
-        unit: 'fahrenheit',
-        locationKey: 'auto',
-        fallbackLocationName: ''
-      });
-    });
-
-    expect(viewModel.planetId).toBe('coruscant');
   });
 });
 

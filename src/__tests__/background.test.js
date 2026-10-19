@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { createSpy } from './testUtils.js';
 
 describe('background service worker', () => {
@@ -9,6 +9,14 @@ describe('background service worker', () => {
   let historySpy;
   let searchQuerySpy;
   let realChrome;
+
+  afterAll(() => {
+    if (realChrome) {
+      globalThis.chrome = realChrome;
+    } else {
+      delete globalThis.chrome;
+    }
+  });
 
   test('registers listeners on import', async () => {
     realChrome = globalThis.chrome;
@@ -133,13 +141,5 @@ describe('background service worker', () => {
     messageHandler({}, {}, sendResponse);
     messageHandler(null, {}, sendResponse);
     expect(sendResponse.calls.length).toBe(0);
-  });
-
-  test('cleanup', () => {
-    if (realChrome) {
-      globalThis.chrome = realChrome;
-    } else {
-      delete globalThis.chrome;
-    }
   });
 });

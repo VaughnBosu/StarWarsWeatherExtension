@@ -73,11 +73,12 @@ export function createFetchMock(responses = []) {
     if (response instanceof Error) {
       throw response;
     }
-    const { ok = true, status = 200 } = response;
+    const { ok = true, status = 200, headers = {} } = response;
     const body = response.json ?? response.body ?? {};
     return {
       ok,
       status,
+      headers: { get: (name) => headers[name] ?? null },
       json: async () => (typeof body === 'function' ? body() : body)
     };
   };

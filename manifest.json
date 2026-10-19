@@ -1,15 +1,15 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "2.4",
+  "version": "2.5",
   "default_locale": "en",
   "description": "__MSG_extensionDescription__",
   "icons": {
-    "16": "/public/assets/icons/icon16.png",
-    "32": "/public/assets/icons/icon32.png",
-    "48": "/public/assets/icons/icon48.png",
-    "64": "/public/assets/icons/icon64.png",
-    "128": "/public/assets/icons/icon128.png"
+    "16": "public/assets/icons/icon16.png",
+    "32": "public/assets/icons/icon32.png",
+    "48": "public/assets/icons/icon48.png",
+    "64": "public/assets/icons/icon64.png",
+    "128": "public/assets/icons/icon128.png"
   },
   "chrome_url_overrides": {
     "newtab": "./public/index.html"

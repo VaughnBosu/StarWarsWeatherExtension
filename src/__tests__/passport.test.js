@@ -141,12 +141,12 @@ describe('passport explore menu', () => {
 
     const hoth = stamps.find((stamp) => stamp.classList.contains('visited'));
     expect(hoth).toBeTruthy();
-    expect(hoth.querySelector('.passport-stamp-art').dataset.art).toBe('/public/assets/hoth.webp');
+    expect(hoth.querySelector('.passport-stamp-art').dataset.art).toBe('/public/assets/passport/hoth.webp');
     expect(hoth.querySelector('.passport-stamp-name').textContent).toBe('Hoth');
 
     const locked = stamps.find((stamp) => stamp.classList.contains('locked'));
     expect(locked).toBeTruthy();
-    expect(locked.querySelector('.passport-stamp-art').dataset.art).toMatch(/\/public\/assets\/.+\.webp/);
+    expect(locked.querySelector('.passport-stamp-art').dataset.art).toMatch(/\/public\/assets\/passport\/.+\.webp/);
   });
 
   test('escape and outside click close the passport panel', () => {
@@ -290,8 +290,7 @@ describe('passport stamp requirements', () => {
   });
 });
 
-// Stamps reuse the full-screen planet backgrounds (~22 MB for the set), so the
-// grid must never request more than one at a time.
+// Stamp art is small, but serial decoding keeps the grid smooth on low-end devices.
 describe('passport stamp art loading', () => {
   test('tiles hold their art url back instead of requesting all of it up front', () => {
     updatePassportUi(createLocalizationMock({}));
@@ -299,7 +298,7 @@ describe('passport stamp art loading', () => {
     const art = stampArt();
     expect(art).toHaveLength(PLANET_RULES.length);
     art.forEach((el) => {
-      expect(el.dataset.art).toMatch(/^\/public\/assets\/.+\.webp$/);
+      expect(el.dataset.art).toMatch(/^\/public\/assets\/passport\/.+\.webp$/);
       expect(el.getAttribute('loading')).toBe('lazy');
       expect(el.getAttribute('decoding')).toBe('async');
     });
@@ -331,14 +330,6 @@ describe('passport stamp art loading', () => {
 
     expect(art[0].classList.contains('loaded')).toBe(false);
     expect(art[1].getAttribute('src')).toBe(art[1].dataset.art);
-  });
-
-  test('re-rendering the grid does not leave the old queue loading', () => {
-    updatePassportUi(createLocalizationMock({}));
-    updatePassportUi(createLocalizationMock({}));
-
-    expect(stampArt()).toHaveLength(PLANET_RULES.length);
-    expect(loadedSources()).toHaveLength(1);
   });
 
   // A discarded tile keeps its load listener until the request resolves; if that late

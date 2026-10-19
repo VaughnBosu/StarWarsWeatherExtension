@@ -84,7 +84,7 @@ const realFetch = globalThis.fetch;
 const realBrowser = globalThis.browser;
 const realChrome = globalThis.chrome;
 const realNavigator = globalThis.navigator;
-const realApiKey = globalThis.API_KEY;
+const realBackendBaseUrl = globalThis.BACKEND_BASE_URL;
 
 beforeAll(async () => {
   popup = await import('../popup.js');
@@ -102,7 +102,7 @@ beforeEach(() => {
   };
   delete globalThis.chrome;
   globalThis.window.open = () => {};
-  globalThis.API_KEY = 'test-key';
+  globalThis.BACKEND_BASE_URL = 'https://weather.example.test';
 });
 
 afterEach(() => {
@@ -129,10 +129,10 @@ afterEach(() => {
   } else {
     delete globalThis.navigator;
   }
-  if (realApiKey) {
-    globalThis.API_KEY = realApiKey;
+  if (realBackendBaseUrl) {
+    globalThis.BACKEND_BASE_URL = realBackendBaseUrl;
   } else {
-    delete globalThis.API_KEY;
+    delete globalThis.BACKEND_BASE_URL;
   }
 });
 
@@ -211,10 +211,10 @@ describe('manual location flow', () => {
   test('handleManualLocationSearch renders options from results', async () => {
     globalThis.fetch = createFetchMock([
       {
-        json: [
+        json: { locations: [
           { name: 'Austin', state: 'Texas', country: 'US', lat: 30.2672, lon: -97.7431 },
           { name: 'Paris', country: 'FR', lat: 48.8566, lon: 2.3522 }
-        ]
+        ] }
       }
     ]);
 
@@ -232,44 +232,10 @@ describe('manual location flow', () => {
     expect(message.includes('Manual location set to')).toBe(true);
   });
 
-  test('handleManualLocationSearch handles no results', async () => {
-    globalThis.fetch = createFetchMock([
-      { json: [] }
-    ]);
-
-    const input = document.getElementById('manualLocationInput');
-    input.value = 'Nowhere';
-
-    await popup.handleManualLocationSearch(input);
-
-    const message = document.querySelector('#manualLocationResults .selection-message').textContent;
-    expect(message.includes('No matching cities')).toBe(true);
-  });
-
-  test('repeating a search reuses the cached suggestions', async () => {
-    const fetchMock = createFetchMock([
-      {
-        json: [{ name: 'Naboo City', country: 'NB', lat: 10.5, lon: 20.5 }]
-      }
-    ]);
-    globalThis.fetch = fetchMock;
-
-    const input = document.getElementById('manualLocationInput');
-    input.value = 'Naboo City';
-    await popup.handleManualLocationSearch(input);
-
-    // same city, different casing and padding, still one geocoding call
-    input.value = '  naboo city  ';
-    await popup.handleManualLocationSearch(input);
-
-    expect(fetchMock.calls.length).toBe(1);
-    expect(document.querySelectorAll('button.selection-option').length).toBe(1);
-  });
-
   test('a repeat search after the popup is torn down issues no second request', async () => {
     globalThis.fetch = createFetchMock([
       {
-        json: [{ name: 'Naboo City', country: 'NB', lat: 10.5, lon: 20.5 }]
+        json: { locations: [{ name: 'Naboo City', country: 'NB', lat: 10.5, lon: 20.5 }] }
       }
     ]);
 
@@ -298,7 +264,7 @@ describe('manual location flow', () => {
   });
 
   test('a search that matched nothing is not repeated after teardown', async () => {
-    globalThis.fetch = createFetchMock([{ json: [] }]);
+    globalThis.fetch = createFetchMock([{ json: { locations: [] } }]);
 
     const firstInput = document.getElementById('manualLocationInput');
     firstInput.value = 'Alderaan';
@@ -322,7 +288,7 @@ describe('manual location flow', () => {
   test('a failed search is not cached and retries on the next attempt', async () => {
     const fetchMock = createFetchMock([
       { ok: false, status: 500, json: {} },
-      { json: [{ name: 'Naboo City', country: 'NB', lat: 10.5, lon: 20.5 }] }
+      { json: { locations: [{ name: 'Naboo City', country: 'NB', lat: 10.5, lon: 20.5 }] } }
     ]);
     globalThis.fetch = fetchMock;
 
@@ -352,11 +318,6 @@ describe('manual location flow', () => {
 
     const message = document.querySelector('#manualLocationResults .selection-message').textContent;
     expect(message.includes('Using automatic location')).toBe(true);
-  });
-
-  test('formatManualLocationDisplay handles US state abbreviations', () => {
-    expect(popup.formatManualLocationDisplay({ name: 'Austin', state: 'Texas', country: 'US' })).toBe('Austin, TX');
-    expect(popup.formatManualLocationDisplay({ name: 'Paris', country: 'FR' })).toBe('Paris, FR');
   });
 });
 

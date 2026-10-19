@@ -1,0 +1,832 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Star Wars Weather v2.5 API.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: star-wars-weather
+    AllowedPattern: '^[a-zA-Z0-9-]{3,32}$'
+  Environment:
+    Type: String
+    Default: prod
+    AllowedPattern: '^[a-zA-Z0-9-]{2,16}$'
+  ArtifactBucket:
+    Type: String
+    Description: S3 bucket containing the packaged Lambda artifact.
+  ArtifactKey:
+    Type: String
+    Description: Versioned or content-addressed S3 key for the Lambda zip.
+  CorsAllowedOrigins:
+    Type: CommaDelimitedList
+    Default: '*'
+    Description: >-
+      HTTP API CORS origins. Wildcard is appropriate for this credential-free
+      public GET API and supports per-install browser-extension origins.
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Optional email address for alarm notifications; confirmation is required.
+  # Integer limits are digit-pattern Strings: a Number parameter accepts decimals,
+  # which backend/src/config.js rejects.
+  ProviderMinuteLimit:
+    Type: String
+    Default: '48'
+    AllowedPattern: '^[1-9][0-9]{0,5}$'
+    Description: Sustained rolling refill per minute (20 percent below a 60/minute plan).
+  ProviderDailyLimit:
+    Type: String
+    Default: '25000'
+    AllowedPattern: '^[1-9][0-9]{0,8}$'
+  ProviderMonthlyLimit:
+    Type: String
+    Default: '800000'
+    AllowedPattern: '^[1-9][0-9]{0,9}$'
+  DynamoMaxReadRequestUnits:
+    Type: Number
+    Default: 25
+    MinValue: 1
+  DynamoMaxWriteRequestUnits:
+    Type: Number
+    Default: 40
+    MinValue: 1
+    Description: >-
+      Cost ceiling, not capacity planning. A cache miss writes 3-4 items
+      (lease, quota, cache), so this must cover the admitted burst.
+  HttpApiStageRateLimit:
+    Type: Number
+    Default: 0.5
+    MinValue: 0.01
+    Description: >-
+      Default steady-state requests per second for routes without an explicit
+      override; this is not a shared stage-wide bucket.
+  HttpApiStageBurstLimit:
+    Type: Number
+    Default: 5
+    MinValue: 1
+  HttpApiWeatherRateLimit:
+    Type: Number
+    Default: 5
+    MinValue: 0.01
+  # Summed route bursts must stay within the account's Lambda concurrency quota;
+  # Lambda throttling above it surfaces as HTTP API 500s rather than 429s.
+  HttpApiWeatherBurstLimit:
+    Type: Number
+    Default: 6
+    MinValue: 1
+  HttpApiReverseRateLimit:
+    Type: Number
+    Default: 1
+    MinValue: 0.01
+  HttpApiReverseBurstLimit:
+    Type: Number
+    Default: 2
+    MinValue: 1
+  HttpApiSearchRateLimit:
+    Type: Number
+    Default: 0.5
+    MinValue: 0.01
+  HttpApiSearchBurstLimit:
+    Type: Number
+    Default: 2
+    MinValue: 1
+  ClientUpstreamLimit:
+    Type: String
+    Default: '60'
+    AllowedPattern: '^([1-9][0-9]{0,3}|10000)$'
+    Description: Maximum unique cache misses per source-IP bucket and window (1-10000).
+  ClientUpstreamWindowSeconds:
+    Type: String
+    Default: '300'
+    AllowedPattern: '^([6-9][0-9]|[1-9][0-9]{2}|[1-2][0-9]{3}|3[0-5][0-9]{2}|3600)$'
+    Description: Short per-source-IP window in whole seconds (60-3600).
+  ClientUpstreamDailyLimit:
+    Type: String
+    Default: '300'
+    AllowedPattern: '^(0|[1-9][0-9]{0,4}|100000)$'
+    Description: >-
+      Maximum unique cache misses per source IP per UTC day (0 disables). The
+      short window alone lets one address spend most of the daily provider budget.
+  ClientRatePepper:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    MaxLength: 256
+    Description: >-
+      Deployment-generated pepper for irreversible source-IP rate-bucket keys;
+      never log or reuse it as an application credential.
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+
+Resources:
+  CacheTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      OnDemandThroughput:
+        MaxReadRequestUnits: !Ref DynamoMaxReadRequestUnits
+        MaxWriteRequestUnits: !Ref DynamoMaxWriteRequestUnits
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: DataClassification
+          Value: ephemeral-cache
+
+  ProviderSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub '${ProjectName} ${Environment} upstream API credential'
+      SecretString: REPLACE_BEFORE_TRAFFIC
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: DataClassification
+          Value: credential
+
+  BackendExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Least-privilege execution role for the anonymous weather API.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RuntimeAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub >-
+                  arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectName}-${Environment}-api:*
+              - Sid: CacheRecordsOnly
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt CacheTable.Arn
+              - Sid: ReadProviderCredential
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref ProviderSecret
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  BackendFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-api'
+      Description: Shared cached weather and location proxy for Star Wars Weather.
+      Architectures:
+        - arm64
+      Runtime: nodejs22.x
+      Handler: index.handler
+      # 256 MB for the CPU share; cold starts at 128 MB approach the 8 s timeout.
+      MemorySize: 256
+      Timeout: 8
+      Role: !GetAtt BackendExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: !Ref ArtifactKey
+      Environment:
+        Variables:
+          CACHE_TABLE_NAME: !Ref CacheTable
+          PROVIDER_SECRET_ID: !Ref ProviderSecret
+          PROVIDER_SECRET_JSON_FIELD: apiKey
+          PROVIDER_MINUTE_LIMIT: !Sub '${ProviderMinuteLimit}'
+          PROVIDER_BURST_LIMIT: '6'
+          PROVIDER_429_COOLDOWN_SECONDS: '60'
+          PROVIDER_DAILY_LIMIT: !Sub '${ProviderDailyLimit}'
+          PROVIDER_MONTHLY_LIMIT: !Sub '${ProviderMonthlyLimit}'
+          CLIENT_UPSTREAM_LIMIT: !Sub '${ClientUpstreamLimit}'
+          CLIENT_UPSTREAM_WINDOW_SECONDS: !Sub '${ClientUpstreamWindowSeconds}'
+          CLIENT_UPSTREAM_DAILY_LIMIT: !Sub '${ClientUpstreamDailyLimit}'
+          CLIENT_RATE_PEPPER: !Ref ClientRatePepper
+          UPSTREAM_TIMEOUT_MS: '3000'
+          UPSTREAM_MAX_BYTES: '65536'
+          WEATHER_FRESH_SECONDS: '1200'
+          WEATHER_STALE_SECONDS: '21600'
+          PLACE_POSITIVE_SECONDS: '2592000'
+          PLACE_NEGATIVE_SECONDS: '86400'
+          CACHE_LEASE_SECONDS: '5'
+          CACHE_LEASE_WAIT_MS: '250'
+          CACHE_LEASE_WAIT_ATTEMPTS: '8'
+          METRIC_NAMESPACE: StarWarsWeather/Backend
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-api'
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  HttpApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ProjectName}-${Environment}-http-api'
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-http-api'
+      Description: Low-fixed-cost public ingress for the anonymous weather API.
+      ProtocolType: HTTP
+      DisableExecuteApiEndpoint: false
+      CorsConfiguration:
+        AllowCredentials: false
+        AllowHeaders:
+          - content-type
+        AllowMethods:
+          - GET
+          - OPTIONS
+        AllowOrigins: !Ref CorsAllowedOrigins
+        ExposeHeaders:
+          - retry-after
+          - warning
+        MaxAge: 86400
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      Description: Lambda payload-v2 proxy integration.
+      IntegrationType: AWS_PROXY
+      IntegrationMethod: POST
+      IntegrationUri: !Sub >-
+        arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BackendFunction.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 10000
+
+  HttpApiWeatherRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      AuthorizationType: NONE
+      RouteKey: GET /v1/weather
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+
+  HttpApiReverseRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      AuthorizationType: NONE
+      RouteKey: GET /v1/locations/reverse
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+
+  HttpApiSearchRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      AuthorizationType: NONE
+      RouteKey: GET /v1/locations/search
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    DependsOn:
+      - HttpApiWeatherRoute
+      - HttpApiReverseRoute
+      - HttpApiSearchRoute
+    Properties:
+      ApiId: !Ref HttpApi
+      AutoDeploy: true
+      Description: >-
+        Privacy-safe default stage: status-only access logs omit source IPs,
+        request URLs, query strings, headers, and user agents.
+      StageName: $default
+      AccessLogSettings:
+        # Bare log-group ARN: GetAtt Arn ends in ':*', which API Gateway strips and
+        # CloudFormation then reports as drift.
+        DestinationArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${HttpApiAccessLogGroup}'
+        Format: >-
+          {"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","integrationStatus":"$context.integration.status","gatewayResponseType":"$context.error.responseType"}
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: false
+        ThrottlingBurstLimit: !Ref HttpApiStageBurstLimit
+        ThrottlingRateLimit: !Ref HttpApiStageRateLimit
+      RouteSettings:
+        'GET /v1/weather':
+          DetailedMetricsEnabled: false
+          ThrottlingBurstLimit: !Ref HttpApiWeatherBurstLimit
+          ThrottlingRateLimit: !Ref HttpApiWeatherRateLimit
+        'GET /v1/locations/reverse':
+          DetailedMetricsEnabled: false
+          ThrottlingBurstLimit: !Ref HttpApiReverseBurstLimit
+          ThrottlingRateLimit: !Ref HttpApiReverseRateLimit
+        'GET /v1/locations/search':
+          DetailedMetricsEnabled: false
+          ThrottlingBurstLimit: !Ref HttpApiSearchBurstLimit
+          ThrottlingRateLimit: !Ref HttpApiSearchRateLimit
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+
+  HttpApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BackendFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub >-
+        arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/GET/v1/*
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlertEmail
+    Properties:
+      DisplayName: Star Wars Weather backend alerts
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      Endpoint: !Ref AlertEmail
+      Protocol: email
+      TopicArn: !Ref AlertTopic
+
+  Provider429Alarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-provider-429'
+      AlarmDescription: Upstream returned at least one rate-limit response despite configured headroom.
+      Namespace: StarWarsWeather/Backend
+      MetricName: UpstreamResponse429
+      Dimensions:
+        - Name: Service
+          Value: WeatherApi
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+
+  ProviderAuthDeniedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-provider-auth-denied'
+      AlarmDescription: Upstream rejected the provider credential (401/403).
+      Namespace: StarWarsWeather/Backend
+      MetricName: UpstreamAuthDenied
+      Dimensions:
+        - Name: Service
+          Value: WeatherApi
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+
+  ProviderBudgetAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-provider-budget-refused'
+      AlarmDescription: >-
+        Sustained provider-budget refusals (more than 25 in each of two of three
+        five-minute periods): peak-minute token refusals are expected at scale,
+        an exhausted day, month or 429 cooldown is not.
+      Namespace: StarWarsWeather/Backend
+      MetricName: ProviderBudgetRefused
+      Dimensions:
+        - Name: Service
+          Value: WeatherApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 25
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+
+  LambdaErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-lambda-errors'
+      AlarmDescription: Unhandled Lambda invocation errors.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BackendFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+
+  LambdaThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-lambda-throttles'
+      AlarmDescription: Account-level concurrency prevented Lambda requests from running.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BackendFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+
+  DynamoThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-dynamodb-throttles'
+      AlarmDescription: DynamoDB cache reads or writes were throttled by the configured safety ceiling.
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 0
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      Metrics:
+        - Id: read_throttles
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ReadThrottleEvents
+              Dimensions:
+                - Name: TableName
+                  Value: !Ref CacheTable
+            Period: 60
+            Stat: Sum
+        - Id: write_throttles
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: WriteThrottleEvents
+              Dimensions:
+                - Name: TableName
+                  Value: !Ref CacheTable
+            Period: 60
+            Stat: Sum
+        - Id: total_throttles
+          Expression: read_throttles + write_throttles
+          Label: Total DynamoDB throttle events
+          ReturnData: true
+
+  HttpApi5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-http-api-5xx'
+      AlarmDescription: >-
+        More than 5 percent of HTTP API responses were server errors (and more
+        than 10 of them) in two consecutive five-minute periods. Individual 503s
+        for a cold cell during a provider refusal are expected at scale.
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 5
+      TreatMissingData: notBreaching
+      Metrics:
+        - Id: errors
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/ApiGateway
+              MetricName: 5xx
+              Dimensions:
+                - Name: ApiId
+                  Value: !Ref HttpApi
+                - Name: Stage
+                  Value: $default
+            Period: 300
+            Stat: Sum
+        - Id: requests
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/ApiGateway
+              MetricName: Count
+              Dimensions:
+                - Name: ApiId
+                  Value: !Ref HttpApi
+                - Name: Stage
+                  Value: $default
+            Period: 300
+            Stat: Sum
+        - Id: error_rate
+          Expression: IF(errors > 10, 100 * errors / requests, 0)
+          Label: Server error percentage
+          ReturnData: true
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+
+  HttpApi4xxSpikeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-http-api-4xx-spike'
+      AlarmDescription: >-
+        More than 20 percent of HTTP API responses (and more than 100) were
+        client errors, including gateway throttles and invalid routes, in a
+        five-minute period.
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 20
+      TreatMissingData: notBreaching
+      Metrics:
+        - Id: errors
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/ApiGateway
+              MetricName: 4xx
+              Dimensions:
+                - Name: ApiId
+                  Value: !Ref HttpApi
+                - Name: Stage
+                  Value: $default
+            Period: 300
+            Stat: Sum
+        - Id: requests
+          ReturnData: false
+          MetricStat:
+            Metric:
+              Namespace: AWS/ApiGateway
+              MetricName: Count
+              Dimensions:
+                - Name: ApiId
+                  Value: !Ref HttpApi
+                - Name: Stage
+                  Value: $default
+            Period: 300
+            Stat: Sum
+        - Id: error_rate
+          Expression: IF(errors > 100, 100 * errors / requests, 0)
+          Label: Client error percentage
+          ReturnData: true
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+
+  HttpApiRequestSpikeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-http-api-request-spike'
+      AlarmDescription: >-
+        HTTP API received more than 1000 requests per five minutes for two
+        consecutive periods, including successful cached traffic.
+      Namespace: AWS/ApiGateway
+      MetricName: Count
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApi
+        - Name: Stage
+          Value: $default
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+      OKActions: !If [HasAlertEmail, [!Ref AlertTopic], !Ref 'AWS::NoValue']
+
+  HttpApiOperationsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${ProjectName}-${Environment}-operations'
+      DashboardBody: !Sub
+        - |
+          {
+            "start": "-PT24H",
+            "periodOverride": "inherit",
+            "widgets": [
+              {
+                "type": "text", "x": 0, "y": 0, "width": 24, "height": 3,
+                "properties": {
+                  "markdown": "# Star Wars Weather HTTP API — ${Environment}\nAPI Gateway native metrics plus status-only access logs expose errors and throttles without source IPs, URLs, query strings, headers, or user agents. Route throttles are aggregate best-effort token buckets, not per-IP quotas or hard cost caps."
+                }
+              },
+              {
+                "type": "metric", "x": 0, "y": 3, "width": 12, "height": 7,
+                "properties": {
+                  "title": "HTTP API requests, errors, and rejection rates",
+                  "view": "timeSeries", "region": "${Region}", "period": 300, "stat": "Sum", "yAxis": {"right": {"min": 0, "max": 100}},
+                  "metrics": [
+                    [{"expression": "IF(requests>0,100*client4xx/requests,0)", "label": "Gateway 4xx % (includes throttles)", "id": "client4xx_pct", "region": "${Region}", "yAxis": "right"}],
+                    [{"expression": "IF(requests>0,100*server5xx/requests,0)", "label": "Gateway 5xx %", "id": "server5xx_pct", "region": "${Region}", "yAxis": "right"}],
+                    ["AWS/ApiGateway", "Count", "ApiId", "${ApiId}", "Stage", "$default", {"label": "Requests", "id": "requests"}],
+                    [".", "4xx", ".", ".", ".", ".", {"label": "4xx (includes throttles)", "id": "client4xx"}],
+                    [".", "5xx", ".", ".", ".", ".", {"label": "5xx", "id": "server5xx"}]
+                  ]
+                }
+              },
+              {
+                "type": "metric", "x": 12, "y": 3, "width": 12, "height": 7,
+                "properties": {
+                  "title": "HTTP API latency",
+                  "view": "timeSeries", "region": "${Region}", "period": 300, "stat": "p95",
+                  "metrics": [
+                    ["AWS/ApiGateway", "Latency", "ApiId", "${ApiId}", "Stage", "$default", {"label": "End-to-end p95"}],
+                    [".", "IntegrationLatency", ".", ".", ".", ".", {"label": "Lambda integration p95"}]
+                  ]
+                }
+              },
+              {
+                "type": "metric", "x": 0, "y": 10, "width": 12, "height": 7,
+                "properties": {
+                  "title": "Backend and cache outcomes",
+                  "view": "timeSeries", "region": "${Region}", "period": 300, "stat": "Sum",
+                  "metrics": [
+                    ["${MetricNamespace}", "BackendRequest", "Service", "WeatherApi", {"label": "Backend requests"}],
+                    [".", "CacheFreshHit", ".", ".", {"label": "Fresh cache hit"}],
+                    [".", "CacheStaleServed", ".", ".", {"label": "Stale fallback"}],
+                    ["AWS/Lambda", "Invocations", "FunctionName", "${FunctionName}", {"label": "Lambda invocations"}]
+                  ]
+                }
+              },
+              {
+                "type": "metric", "x": 12, "y": 10, "width": 12, "height": 7,
+                "properties": {
+                  "title": "Exact upstream outcomes",
+                  "view": "timeSeries", "region": "${Region}", "period": 300, "stat": "Sum",
+                  "metrics": [
+                    ["${MetricNamespace}", "UpstreamAttempt", "Service", "WeatherApi", {"label": "Attempts"}],
+                    [".", "UpstreamSuccess", ".", ".", {"label": "Success"}],
+                    [".", "UpstreamResponse429", ".", ".", {"label": "Provider 429"}],
+                    [".", "UpstreamAuthDenied", ".", ".", {"label": "Provider key denied"}],
+                    [".", "ProviderBudgetRefused", ".", ".", {"label": "Budget refused"}],
+                    [".", "UpstreamResponse5xx", ".", ".", {"label": "Provider 5xx"}],
+                    [".", "UpstreamTimeout", ".", ".", {"label": "Provider timeout"}]
+                  ]
+                }
+              },
+              {
+                "type": "metric", "x": 0, "y": 17, "width": 12, "height": 7,
+                "properties": {
+                  "title": "Provider denial and success percentages",
+                  "view": "timeSeries", "region": "${Region}", "period": 300, "stat": "Sum", "yAxis": {"left": {"min": 0, "max": 100}},
+                  "metrics": [
+                    [{"expression": "IF(attempts>0,100*p429/attempts,0)", "label": "Provider 429 %", "id": "p429_pct", "region": "${Region}"}],
+                    [{"expression": "IF(attempts>0,100*auth/attempts,0)", "label": "Provider key denied %", "id": "auth_pct", "region": "${Region}"}],
+                    [{"expression": "IF(attempts>0,100*success/attempts,100)", "label": "Provider success %", "id": "success_pct", "region": "${Region}"}],
+                    [{"expression": "IF((attempts+refused)>0,100*refused/(attempts+refused),0)", "label": "Calls refused by configured budget %", "id": "refused_pct", "region": "${Region}"}],
+                    ["${MetricNamespace}", "UpstreamAttempt", "Service", "WeatherApi", {"id": "attempts", "visible": false}],
+                    [".", "UpstreamResponse429", ".", ".", {"id": "p429", "visible": false}],
+                    [".", "UpstreamAuthDenied", ".", ".", {"id": "auth", "visible": false}],
+                    [".", "UpstreamSuccess", ".", ".", {"id": "success", "visible": false}],
+                    [".", "ProviderBudgetRefused", ".", ".", {"id": "refused", "visible": false}]
+                  ]
+                }
+              },
+              {
+                "type": "log", "x": 12, "y": 17, "width": 12, "height": 7,
+                "properties": {
+                  "title": "Exact gateway outcomes (status-only logs)",
+                  "region": "${Region}", "view": "table",
+                  "query": "SOURCE '${HttpApiLogGroupName}' | fields routeKey, status, integrationStatus, gatewayResponseType | stats count(*) as requests by routeKey, status, integrationStatus, gatewayResponseType | sort requests desc"
+                }
+              },
+              {
+                "type": "metric", "x": 0, "y": 24, "width": 12, "height": 7,
+                "properties": {
+                  "title": "Runtime safety ceilings and errors",
+                  "view": "timeSeries", "region": "${Region}", "period": 300, "stat": "Sum",
+                  "metrics": [
+                    ["AWS/Lambda", "Errors", "FunctionName", "${FunctionName}", {"label": "Lambda errors"}],
+                    [".", "Throttles", ".", ".", {"label": "Lambda throttles"}],
+                    ["AWS/DynamoDB", "ReadThrottleEvents", "TableName", "${TableName}", {"label": "DynamoDB read throttles"}],
+                    [".", "WriteThrottleEvents", ".", ".", {"label": "DynamoDB write throttles"}],
+                    ["AWS/ApiGateway", "5xx", "ApiId", "${ApiId}", "Stage", "$default", {"label": "HTTP API 5xx"}]
+                  ]
+                }
+              },
+              {
+                "type": "metric", "x": 12, "y": 24, "width": 12, "height": 7,
+                "properties": {
+                  "title": "Selected-range totals — use This month for usage",
+                  "view": "singleValue", "region": "${Region}", "stat": "Sum", "setPeriodToTimeRange": true,
+                  "metrics": [
+                    ["AWS/ApiGateway", "Count", "ApiId", "${ApiId}", "Stage", "$default", {"label": "Gateway requests"}],
+                    ["${MetricNamespace}", "BackendRequest", "Service", "WeatherApi", {"label": "Backend requests"}],
+                    [".", "CacheFreshHit", ".", ".", {"label": "Fresh cache hits"}],
+                    [".", "UpstreamAttempt", ".", ".", {"label": "Provider attempts"}],
+                    [".", "UpstreamSuccess", ".", ".", {"label": "Provider successes"}],
+                    [".", "UpstreamResponse429", ".", ".", {"label": "Provider 429"}],
+                    [".", "UpstreamAuthDenied", ".", ".", {"label": "Provider key denied"}],
+                    [".", "ProviderBudgetRefused", ".", ".", {"label": "Budget refused"}]
+                  ]
+                }
+              },
+              {
+                "type": "log", "x": 0, "y": 31, "width": 24, "height": 8,
+                "properties": {
+                  "title": "Exact backend outcomes by route (structured logs, no request data)",
+                  "region": "${Region}", "view": "table",
+                  "query": "SOURCE '${BackendLogGroupName}' | fields Route, BackendRequest, BackendRejectedRequest, CacheFreshHit, CacheMiss, CacheStaleServed, UpstreamAttempt, UpstreamSuccess, UpstreamResponse429, UpstreamAuthDenied, UpstreamResponse5xx, UpstreamTimeout, ProviderBudgetRefused, ClientUpstreamReservation, ClientUpstreamRateRefused, ClientRateStoreError, ClientIdentityMissing | stats sum(BackendRequest) as requests, sum(BackendRejectedRequest) as backendRejected, sum(CacheFreshHit) as freshHits, sum(CacheMiss) as misses, sum(CacheStaleServed) as staleServed, sum(UpstreamAttempt) as attempts, sum(UpstreamSuccess) as successes, sum(UpstreamResponse429) as provider429, sum(UpstreamAuthDenied) as authDenied, sum(UpstreamResponse5xx) as provider5xx, sum(UpstreamTimeout) as timeouts, sum(ProviderBudgetRefused) as budgetRefused, sum(ClientUpstreamReservation) as clientRateAllowed, sum(ClientUpstreamRateRefused) as clientRateRefused, sum(ClientRateStoreError) as clientRateStoreErrors, sum(ClientIdentityMissing) as clientIdentityMissing by Route | sort requests desc"
+                }
+              }
+            ]
+          }
+        - Region: !Ref AWS::Region
+          Environment: !Ref Environment
+          ApiId: !Ref HttpApi
+          FunctionName: !Ref BackendFunction
+          TableName: !Ref CacheTable
+          MetricNamespace: StarWarsWeather/Backend
+          BackendLogGroupName: !Ref BackendLogGroup
+          HttpApiLogGroupName: !Ref HttpApiAccessLogGroup
+
+Outputs:
+  ApiBaseUrl:
+    Description: Public extension API base URL; no custom domain is configured.
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  HttpApiId:
+    Value: !Ref HttpApi
+  HttpApiStageName:
+    Value: !Ref HttpApiStage
+  BackendFunctionName:
+    Value: !Ref BackendFunction
+  BackendLogGroupName:
+    Value: !Ref BackendLogGroup
+  CacheTableName:
+    Value: !Ref CacheTable
+  ProviderSecretArn:
+    Description: Seed this retained secret immediately after deployment; never expose its value in stack parameters.
+    Value: !Ref ProviderSecret
+  DashboardName:
+    Value: !Ref HttpApiOperationsDashboard
+  DashboardUrl:
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards/dashboard/${HttpApiOperationsDashboard}'
+  AlertTopicArn:
+    Condition: HasAlertEmail
+    Value: !Ref AlertTopic

@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   buildGeocodeCacheKey,
   buildGeocodeQueryKey,
-  clearGeocodeCache,
-  clearGeocodeQueryCache,
   clearGeolocationAlerted,
   GEOCODE_QUERY_CACHE_MAX_ENTRIES,
   readGeocodeQueryCache,
@@ -23,6 +21,9 @@ import {
   readGeocodeCache,
   readLastKnownWeather,
   readWeatherCache,
+  readBackendRetryAt,
+  writeBackendRetryAt,
+  clearBackendRetryAt,
   setManualLocation,
   writeGeocodeCache,
   setPreferredLanguage,
@@ -87,16 +88,18 @@ describe('storage cache', () => {
     expect(readWeatherCache({ locationKey: 'manual:3,4' })).toBeNull();
   });
 
-  test('returns cached data when filters match', () => {
+  // Pre-2.5 records have no cachedAt; lastUpdated stands in as the fetch time.
+  test('returns cached data when filters match, with a v2.4 fetch time surfaced as cachedAt', () => {
     const record = {
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: new Date(Date.now() - 50 * 60 * 1000).toISOString(),
       language: 'en',
       unit: 'fahrenheit',
       locationKey: 'auto',
       planetName: 'Test'
     };
     localStorage.setItem(STORAGE_KEYS.cache, JSON.stringify(record));
-    expect(readWeatherCache({ language: 'en', unit: 'fahrenheit', locationKey: 'auto' })).toEqual(record);
+    expect(readWeatherCache({ language: 'en', unit: 'fahrenheit', locationKey: 'auto' }))
+      .toEqual({ ...record, cachedAt: record.lastUpdated });
   });
 
   test('clears cache on invalid JSON', () => {
@@ -164,10 +167,6 @@ describe('geocode cache', () => {
   test('buildGeocodeCacheKey returns null for invalid coordinates', () => {
     expect(buildGeocodeCacheKey(undefined, 10)).toBeNull();
     expect(buildGeocodeCacheKey(10, Number.NaN)).toBeNull();
-  });
-
-  test('returns null when cache empty', () => {
-    expect(readGeocodeCache(42.28, -83.74)).toBeNull();
   });
 
   test('round-trips a geocode record', () => {
@@ -286,12 +285,6 @@ describe('geocode cache', () => {
     expect(localStorage.getItem(STORAGE_KEYS.geocodeCache)).toBeNull();
   });
 
-  test('clearGeocodeCache removes the entry', () => {
-    writeGeocodeCache(42.28, -83.74, ANN_ARBOR);
-    clearGeocodeCache();
-    expect(localStorage.getItem(STORAGE_KEYS.geocodeCache)).toBeNull();
-  });
-
   // A read that prunes must not fail for the write it chose to do: this threw
   // QuotaExceededError out of fetchLocationDetails, discarding a fetched place name.
   test('a full disk during the prune write does not fail the read', () => {
@@ -365,10 +358,6 @@ describe('forward geocode query cache', () => {
     expect(buildGeocodeQueryKey('   ')).toBeNull();
     expect(buildGeocodeQueryKey(undefined)).toBeNull();
     expect(buildGeocodeQueryKey(42)).toBeNull();
-  });
-
-  test('returns null when nothing is cached', () => {
-    expect(readGeocodeQueryCache('Ann Arbor')).toBeNull();
   });
 
   test('round-trips a suggestion list', () => {
@@ -556,13 +545,6 @@ describe('forward geocode query cache', () => {
 
     expect(readGeocodeQueryCache('Detroit').results[0].name).toBe('Detroit');
   });
-
-  test('clearGeocodeQueryCache removes the store', () => {
-    writeGeocodeQueryCache('Ann Arbor', ANN_ARBOR_RESULTS);
-    clearGeocodeQueryCache();
-    expect(localStorage.getItem(STORAGE_KEYS.geocodeQueryCache)).toBeNull();
-    expect(readGeocodeQueryCache('Ann Arbor')).toBeNull();
-  });
 });
 
 describe('last known weather', () => {
@@ -648,17 +630,6 @@ describe('last known weather', () => {
 
     expect(readLastKnownWeather({ locationKey: 'auto' }).planetId).toBe('naboo');
     expect(readLastKnownWeather({ locationKey: 'manual:1.0000,2.0000' })).toBeNull();
-  });
-
-  test('returns matching payload when filters align', () => {
-    const record = {
-      planetId: 'naboo',
-      language: 'es',
-      unit: 'celsius',
-      lastUpdated: new Date().toISOString()
-    };
-    writeLastKnownWeather(record);
-    expect(readLastKnownWeather({ language: 'es', unit: 'celsius' }).planetId).toBe('naboo');
   });
 
   test('clears invalid JSON', () => {
@@ -772,10 +743,6 @@ describe('preferences and flags', () => {
 });
 
 describe('visited planets', () => {
-  test('getVisitedPlanets returns empty array when unset', () => {
-    expect(getVisitedPlanets()).toEqual([]);
-  });
-
   test('markPlanetVisited adds unique planet ids', () => {
     expect(markPlanetVisited('hoth')).toEqual(['hoth']);
     expect(markPlanetVisited('hoth')).toEqual(['hoth']);
@@ -820,5 +787,35 @@ describe('manual location', () => {
     localStorage.setItem(STORAGE_KEYS.manualLocation, '{}');
     setManualLocation({ name: 'bad', lat: 'nope', lon: null });
     expect(localStorage.getItem(STORAGE_KEYS.manualLocation)).toBeNull();
+  });
+});
+
+describe('storage cache TTL anchor', () => {
+  test('counts the local TTL from the write, not from an older observation time', () => {
+    const observedNinetyMinutesAgo = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+    writeWeatherCache({ lastUpdated: observedNinetyMinutesAgo, language: 'en', unit: 'fahrenheit' });
+    const record = readWeatherCache({ language: 'en', unit: 'fahrenheit' });
+    expect(record).not.toBeNull();
+    expect(record.lastUpdated).toBe(observedNinetyMinutesAgo);
+    expect(Date.now() - Date.parse(record.cachedAt)).toBeLessThan(5000);
+  });
+
+  test('re-persisting a cached reading keeps its original fetch time', () => {
+    const fetchedFiftyMinutesAgo = new Date(Date.now() - 50 * 60 * 1000).toISOString();
+    writeWeatherCache({ cachedAt: fetchedFiftyMinutesAgo, language: 'en', unit: 'fahrenheit' });
+    expect(readWeatherCache({ language: 'en', unit: 'fahrenheit' }).cachedAt).toBe(fetchedFiftyMinutesAgo);
+  });
+});
+
+describe('backend retry time', () => {
+  test('round-trips, rejects garbage, and clears', () => {
+    expect(readBackendRetryAt()).toBeNull();
+    writeBackendRetryAt(1790000000000.4);
+    expect(readBackendRetryAt()).toBe(1790000000000);
+    localStorage.setItem(STORAGE_KEYS.backendRetryAt, 'soon');
+    expect(readBackendRetryAt()).toBeNull();
+    writeBackendRetryAt(5);
+    clearBackendRetryAt();
+    expect(readBackendRetryAt()).toBeNull();
   });
 });

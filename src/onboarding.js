@@ -8,7 +8,6 @@ import {
   getShowShortcuts,
   isOnboardingComplete,
   markOnboardingComplete,
-  readGeocodeCache,
   readGeocodeQueryCache,
   setManualLocation,
   setPreferredLanguage,
@@ -16,17 +15,13 @@ import {
   setShowGoogleApps,
   setShowSearchBar,
   setShowShortcuts,
-  writeGeocodeCache,
   writeGeocodeQueryCache
 } from './storage.js';
 import { loadLocalization, invalidateLocalizationCache } from './i18n.js';
 import { stateToAbbreviation } from './geo.js';
-import {
-  GEOCODING_DIRECT_ENDPOINT,
-  GEOCODING_REVERSE_ENDPOINT,
-  GEOCODING_RESULT_LIMIT,
-  GEOLOCATION_OPTIONS
-} from './config.js';
+import { GEOLOCATION_OPTIONS } from './config.js';
+import { searchLocations } from './backend-client.js';
+import { fetchLocationDetails } from './location-details.js';
 import { recordGeocodeCall, track } from './telemetry.js';
 
 let currentLocalization = null;
@@ -328,39 +323,13 @@ function showAutoError() {
   }
 }
 
-/**
- * Shares the new tab page's coordinate cache: setup and the first render resolve
- * the same GPS fix minutes apart, so that render costs no geocoding call.
- */
 async function reverseGeocode(lat, lon) {
-  const cached = readGeocodeCache(lat, lon);
-  if (cached) {
-    return cached.details ? formatLocationDisplay(cached.details) : '';
-  }
-
-  if (typeof API_KEY === 'undefined') {
+  let details;
+  try {
+    details = await fetchLocationDetails(lat, lon);
+  } catch {
     return '';
   }
-
-  const url = new URL(GEOCODING_REVERSE_ENDPOINT);
-  url.searchParams.set('lat', lat);
-  url.searchParams.set('lon', lon);
-  url.searchParams.set('limit', '1');
-  url.searchParams.set('appid', API_KEY);
-
-  recordGeocodeCall();
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    // a failed request says nothing about the coordinate, so leave it uncached
-    return '';
-  }
-
-  const data = await response.json();
-  const details = Array.isArray(data) && data.length > 0 ? data[0] : null;
-
-  // Cache empty lookups too (shorter TTL) so a nameless coordinate doesn't re-request every load.
-  writeGeocodeCache(lat, lon, details);
-
   return details ? formatLocationDisplay(details) : '';
 }
 
@@ -412,23 +381,8 @@ async function fetchGeocodingSuggestions(query) {
     return cached.results;
   }
 
-  if (typeof API_KEY === 'undefined') {
-    throw new Error('API key is not available');
-  }
-
-  const url = new URL(GEOCODING_DIRECT_ENDPOINT);
-  url.searchParams.set('q', query);
-  url.searchParams.set('limit', String(GEOCODING_RESULT_LIMIT));
-  url.searchParams.set('appid', API_KEY);
-
   recordGeocodeCall();
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    // a failed request says nothing about the query, so leave it uncached
-    throw new Error(`Geocoding request failed with status ${response.status}`);
-  }
-
-  const results = await response.json();
+  const results = await searchLocations(query);
   // Cache empty lists too (shorter negative TTL) so a typo doesn't re-request on every retry.
   writeGeocodeQueryCache(query, results);
   return results;

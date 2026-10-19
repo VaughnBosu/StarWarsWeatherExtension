@@ -6,11 +6,8 @@
 </head>
 <body>
     <div class="hyperspace" id="background">
-        <div id="test" class="video-wrapper">
-            <video autoplay loop muted>
-                <source src="assets/hyperspace.mp4" type="video/mp4">
-            </video>
-          </div>
+        <!-- app.js only creates the video after a weather-cache miss. -->
+        <div id="test" class="video-wrapper" aria-hidden="true"></div>
 
         <section class="top">
             <p id="message"></p>

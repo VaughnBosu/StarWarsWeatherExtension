@@ -1,6 +1,14 @@
-.DS_STORE
+.DS_Store
+.env
 env.js
 .vscode
+.idea/
+.claude/
 agents.md
 claude.md
 node_modules/
+dist/
+coverage/
+*.log
+*.zip
+*provider-key*
